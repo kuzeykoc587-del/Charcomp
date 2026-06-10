@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist/public/
+
+# Vite cache
+.vite/
+.tsbuildinfo
+
+# Environment variables — NEVER commit real values
+.env
+.env.local
+.env.*.local
+
+# Editor
+.DS_Store
+*.log
