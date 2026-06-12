@@ -34,22 +34,32 @@ export function CreateUniverseModal({ open, onClose, onCreated }: CreateUniverse
   const [dupWarning, setDupWarning] = useState(false);
 
   useEffect(() => {
-    if (open) { setName(""); setCoverImage(""); setDescription(""); setCategory("Other"); setDupWarning(false); }
+    if (open) {
+      setName("");
+      setCoverImage("");
+      setDescription("");
+      setCategory("Other");
+      setDupWarning(false);
+    }
   }, [open]);
 
   const checkDuplicate = async () => {
-    if (!name) return;
-    const dup = await duplicateCheck.universe(name);
-    setDupWarning(Boolean(dup));
+    if (!name.trim()) return;
+    try {
+      const dup = await duplicateCheck.universe(name.trim());
+      setDupWarning(Boolean(dup));
+    } catch {
+      setDupWarning(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name.trim()) return;
     setLoading(true);
     try {
       const id = await universesDb.create({
-        name,
+        name: name.trim(),
         coverImage: coverImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1a1a2e&color=7C3AED&size=400&bold=true`,
         description,
         category,
@@ -79,7 +89,7 @@ export function CreateUniverseModal({ open, onClose, onCreated }: CreateUniverse
                 <Label>{t("ph_universe_name")}</Label>
                 <Input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); if (dupWarning) setDupWarning(false); }}
                   onBlur={checkDuplicate}
                   required
                 />
@@ -107,11 +117,19 @@ export function CreateUniverseModal({ open, onClose, onCreated }: CreateUniverse
 
           <div className="space-y-2">
             <Label>Description (optional)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("ph_universe_desc")} rows={2} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t("ph_universe_desc")}
+              rows={2}
+            />
           </div>
 
-          <div className="pt-2 flex justify-end">
-            <Button type="submit" disabled={!name || loading} className="gap-2">
+          <div className="pt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || loading} className="gap-2">
               {loading && <Loader2 size={14} className="animate-spin" />}
               {t("btn_publish")}
             </Button>

@@ -5,6 +5,8 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { usersDb, AppUser } from "../lib/db";
@@ -14,12 +16,28 @@ interface AuthContextType {
   authLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  // legacy compat
-  login: (user: AppUser) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const buildProfile = async (firebaseUser: import("firebase/auth").User): Promise<AppUser> => {
+  const profileFromDb = await usersDb.getById(firebaseUser.uid);
+  const profile: AppUser = profileFromDb ?? {
+    id: firebaseUser.uid,
+    name: firebaseUser.displayName ?? firebaseUser.email?.split("@")[0] ?? "User",
+    avatar:
+      firebaseUser.photoURL ??
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        firebaseUser.displayName ?? "U"
+      )}&background=7C3AED&color=fff&size=400&bold=true`,
+    bio: "",
+    email: firebaseUser.email ?? "",
+  };
+  if (!profileFromDb) await usersDb.upsert(profile);
+  return profile;
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -28,18 +46,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const profileFromDb = await usersDb.getById(firebaseUser.uid);
-        const profile: AppUser = profileFromDb ?? {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName ?? firebaseUser.email?.split("@")[0] ?? "User",
-          avatar:
-            firebaseUser.photoURL ??
-            `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName ?? "U")}&background=7C3AED&color=fff&size=400&bold=true`,
-          bio: "",
-          email: firebaseUser.email ?? "",
-        };
-        if (!profileFromDb) await usersDb.upsert(profile);
-        setUser(profile);
+        try {
+          const profile = await buildProfile(firebaseUser);
+          setUser(profile);
+        } catch {
+          setUser(null);
+        }
       } else {
         setUser(null);
       }
@@ -61,16 +73,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(profile);
   };
 
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const cred = await signInWithPopup(auth, provider);
+    const profile = await buildProfile(cred.user);
+    setUser(profile);
+  };
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
   };
 
-  // legacy compat for any code calling login(user)
-  const login = (u: AppUser) => setUser(u);
-
   return (
-    <AuthContext.Provider value={{ user, authLoading, signIn, signUp, logout, login }}>
+    <AuthContext.Provider value={{ user, authLoading, signIn, signUp, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

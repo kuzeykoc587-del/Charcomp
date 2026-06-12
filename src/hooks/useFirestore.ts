@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, universesDb, charactersDb, duelsDb,
-  likesDb, favoritesDb, recentlyPlayedDb,
-  type Test, type Universe, type Character, type Duel, type FavoriteItem
+  likesDb, favoritesDb, recentlyPlayedDb, tierVotesDb, notificationsDb,
+  type Test, type Universe, type Character, type Duel, type FavoriteItem, type TierVote, type Notification
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -45,6 +45,13 @@ export const useUniverse = (id: string | undefined) =>
     enabled: Boolean(id),
   });
 
+export const useUniversesByCreator = (creatorId: string | undefined) =>
+  useQuery<Universe[]>({
+    queryKey: ["universes-by-creator", creatorId],
+    queryFn: () => (creatorId ? universesDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
 // ── Characters ────────────────────────────────────────────────────────────────
 
 export const useCharacters = (filters?: { seriesId?: string; search?: string }) =>
@@ -69,6 +76,20 @@ export const useCharacter = (id: string | undefined) =>
     enabled: Boolean(id),
   });
 
+export const useCharactersByCreator = (creatorId: string | undefined) =>
+  useQuery<Character[]>({
+    queryKey: ["characters-by-creator", creatorId],
+    queryFn: () => (creatorId ? charactersDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
+export const useGlobalRanking = () =>
+  useQuery<Character[]>({
+    queryKey: ["global-ranking"],
+    queryFn: () => charactersDb.getAllForRanking(),
+    staleTime: 60_000,
+  });
+
 // ── Duels ─────────────────────────────────────────────────────────────────────
 
 export const useDuels = () =>
@@ -76,6 +97,57 @@ export const useDuels = () =>
     queryKey: ["duels"],
     queryFn: () => duelsDb.getAll(),
     staleTime: 30_000,
+  });
+
+export const useDuelsByCreator = (creatorId: string | undefined) =>
+  useQuery<Duel[]>({
+    queryKey: ["duels-by-creator", creatorId],
+    queryFn: () => (creatorId ? duelsDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
+// ── Tier Votes ────────────────────────────────────────────────────────────────
+
+export const useUserTierVote = (userId: string | undefined, characterId: string | undefined) =>
+  useQuery<TierVote | null>({
+    queryKey: ["tier-vote", userId, characterId],
+    queryFn: () => (userId && characterId ? tierVotesDb.getUserVote(userId, characterId) : null),
+    enabled: Boolean(userId && characterId),
+    staleTime: 60_000,
+  });
+
+export const useUserTierVotes = (userId: string | undefined) =>
+  useQuery<TierVote[]>({
+    queryKey: ["tier-votes", userId],
+    queryFn: () => (userId ? tierVotesDb.getUserVotes(userId) : []),
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+  });
+
+export const useVoteTier = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, characterId, tier }: { userId: string; characterId: string; tier: TierVote["tier"] }) =>
+      tierVotesDb.vote(userId, characterId, tier),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["tier-vote", vars.userId, vars.characterId] });
+      qc.invalidateQueries({ queryKey: ["tier-votes", vars.userId] });
+      qc.invalidateQueries({ queryKey: ["characters"] });
+      qc.invalidateQueries({ queryKey: ["global-ranking"] });
+      qc.invalidateQueries({ queryKey: ["character", vars.characterId] });
+    },
+  });
+};
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export const useNotifications = (userId: string | undefined) =>
+  useQuery<Notification[]>({
+    queryKey: ["notifications", userId],
+    queryFn: () => (userId ? notificationsDb.getForUser(userId) : []),
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
 // ── Likes ─────────────────────────────────────────────────────────────────────

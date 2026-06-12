@@ -3,9 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import { Loader2, Swords } from "lucide-react";
 
 import { LanguageProvider } from "./contexts/LanguageContext";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 import HomePage from "./pages/HomePage";
@@ -24,6 +25,8 @@ import UniversesPage from "./pages/UniversesPage";
 import UniverseDetailPage from "./pages/UniverseDetailPage";
 import AdminPage from "./pages/AdminPage";
 import SearchPage from "./pages/SearchPage";
+import GlobalRankingPage from "./pages/GlobalRankingPage";
+import TierlistPage from "./pages/TierlistPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,8 +56,32 @@ function Router() {
       <Route path="/universe/:id" component={UniverseDetailPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/search" component={SearchPage} />
+      <Route path="/ranking" component={GlobalRankingPage} />
+      <Route path="/tierlist" component={TierlistPage} />
       <Route component={NotFound} />
     </Switch>
+  );
+}
+
+function AppShell() {
+  const { authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background gap-4">
+        <div className="flex items-center gap-2 font-black text-2xl text-primary">
+          <Swords size={28} />
+          <span>CharComp</span>
+        </div>
+        <Loader2 className="animate-spin text-primary" size={24} />
+      </div>
+    );
+  }
+
+  return (
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+      <Router />
+    </WouterRouter>
   );
 }
 
@@ -65,9 +92,7 @@ function App() {
         <AuthProvider>
           <LanguageProvider>
             <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <Router />
-              </WouterRouter>
+              <AppShell />
               <Toaster />
             </TooltipProvider>
           </LanguageProvider>

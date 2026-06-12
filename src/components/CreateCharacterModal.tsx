@@ -35,22 +35,32 @@ export function CreateCharacterModal({ open, onClose, defaultSeriesId, onCreated
   const { data: universes = [] } = useUniverses();
 
   useEffect(() => {
-    if (open) { setName(""); setImage(""); setDescription(""); setSeriesId(defaultSeriesId || ""); setDupWarning(false); }
+    if (open) {
+      setName("");
+      setImage("");
+      setDescription("");
+      setSeriesId(defaultSeriesId || "");
+      setDupWarning(false);
+    }
   }, [open, defaultSeriesId]);
 
   const checkDuplicate = async () => {
-    if (!name || !seriesId) return;
-    const isDup = await duplicateCheck.character(name, seriesId);
-    setDupWarning(isDup);
+    if (!name.trim() || !seriesId) return;
+    try {
+      const isDup = await duplicateCheck.character(name.trim(), seriesId);
+      setDupWarning(isDup);
+    } catch {
+      setDupWarning(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !seriesId) return;
+    if (!name.trim() || !seriesId) return;
     setLoading(true);
     try {
       const id = await charactersDb.create({
-        name,
+        name: name.trim(),
         image: image || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=400&bold=true`,
         description,
         seriesId,
@@ -81,7 +91,7 @@ export function CreateCharacterModal({ open, onClose, defaultSeriesId, onCreated
                 <Label>{t("ph_char_name")}</Label>
                 <Input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); if (dupWarning) setDupWarning(false); }}
                   onBlur={checkDuplicate}
                   required
                 />
@@ -93,7 +103,11 @@ export function CreateCharacterModal({ open, onClose, defaultSeriesId, onCreated
               </div>
               <div className="space-y-1">
                 <Label>{t("lbl_select_series")}</Label>
-                <Select value={seriesId} onValueChange={setSeriesId} required>
+                <Select
+                  value={seriesId}
+                  onValueChange={(v) => { setSeriesId(v); setDupWarning(false); }}
+                  required
+                >
                   <SelectTrigger><SelectValue placeholder="Select Universe" /></SelectTrigger>
                   <SelectContent className="max-h-48">
                     {universes.map((s) => (
@@ -110,8 +124,11 @@ export function CreateCharacterModal({ open, onClose, defaultSeriesId, onCreated
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
           </div>
 
-          <div className="pt-2 flex justify-end">
-            <Button type="submit" disabled={!name || !seriesId || loading} className="gap-2">
+          <div className="pt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || !seriesId || loading} className="gap-2">
               {loading && <Loader2 size={14} className="animate-spin" />}
               {t("btn_publish")}
             </Button>

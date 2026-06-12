@@ -18,6 +18,9 @@ export interface Universe {
   characterCount: number;
   creatorId: string;
   createdAt: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Character {
@@ -29,6 +32,18 @@ export interface Character {
   tags: string[];
   creatorId: string;
   createdAt: string;
+  // Duel stats
+  wins?: number;
+  losses?: number;
+  totalDuels?: number;
+  // Tier voting
+  tierSum?: number;
+  tierCount?: number;
+  tierAverage?: number;
+  // Soft delete
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface TestStats {
@@ -53,6 +68,9 @@ export interface Test {
   favoriteCount: number;
   createdAt: string;
   stats: TestStats;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Duel {
@@ -63,6 +81,11 @@ export interface Duel {
   votesB: number;
   creatorId: string;
   createdAt: string;
+  title?: string;
+  description?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface AppUser {
@@ -78,6 +101,27 @@ export interface FavoriteItem {
   itemType: "test" | "universe" | "character";
 }
 
+export interface TierVote {
+  id: string;
+  userId: string;
+  characterId: string;
+  tier: "S" | "A" | "B" | "C" | "D";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: "duel_vote" | "universe_favorited" | "top10";
+  message: string;
+  read: boolean;
+  createdAt: string;
+  data?: Record<string, string>;
+}
+
+const TIER_SCORES: Record<TierVote["tier"], number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fromDoc = <T>(snap: QueryDocumentSnapshot<DocumentData>): T =>
@@ -90,9 +134,9 @@ const ts = () => new Date().toISOString();
 export const universesDb = {
   getAll: async (filters?: { category?: SeriesCategory; search?: string }): Promise<Universe[]> => {
     const col = collection(firestore, "universes");
-    let q = query(col, orderBy("name"));
+    const q = query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Universe>(d));
+    let results = snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted);
     if (filters?.category) results = results.filter(u => u.category === filters.category);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
@@ -103,7 +147,16 @@ export const universesDb = {
 
   getById: async (id: string): Promise<Universe | null> => {
     const snap = await getDoc(doc(firestore, "universes", id));
-    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Universe) : null;
+    if (!snap.exists()) return null;
+    const u = { id: snap.id, ...snap.data() } as Universe;
+    return u.deleted ? null : u;
+  },
+
+  getByCreator: async (creatorId: string): Promise<Universe[]> => {
+    const snap = await getDocs(collection(firestore, "universes"));
+    return snap.docs
+      .map(d => fromDoc<Universe>(d))
+      .filter(u => u.creatorId === creatorId && !u.deleted);
   },
 
   create: async (data: Omit<Universe, "id" | "createdAt" | "characterCount">): Promise<string> => {
@@ -121,6 +174,12 @@ export const universesDb = {
     await deleteDoc(doc(firestore, "universes", id));
   },
 
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "universes", id), {
+      deleted: true, deletedAt: ts(), deletedBy
+    });
+  },
+
   incrementCharacterCount: async (id: string, delta: number): Promise<void> => {
     await updateDoc(doc(firestore, "universes", id), { characterCount: increment(delta) });
   },
@@ -135,7 +194,7 @@ export const charactersDb = {
       ? query(col, where("seriesId", "==", filters.seriesId))
       : query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Character>(d));
+    let results = snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(c => c.name.toLowerCase().includes(s));
@@ -145,7 +204,23 @@ export const charactersDb = {
 
   getById: async (id: string): Promise<Character | null> => {
     const snap = await getDoc(doc(firestore, "characters", id));
-    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Character) : null;
+    if (!snap.exists()) return null;
+    const c = { id: snap.id, ...snap.data() } as Character;
+    return c.deleted ? null : c;
+  },
+
+  getByCreator: async (creatorId: string): Promise<Character[]> => {
+    const snap = await getDocs(collection(firestore, "characters"));
+    return snap.docs
+      .map(d => fromDoc<Character>(d))
+      .filter(c => c.creatorId === creatorId && !c.deleted);
+  },
+
+  getAllForRanking: async (): Promise<Character[]> => {
+    const snap = await getDocs(collection(firestore, "characters"));
+    return snap.docs
+      .map(d => fromDoc<Character>(d))
+      .filter(c => !c.deleted && ((c.wins ?? 0) + (c.losses ?? 0)) > 0);
   },
 
   getManyByIds: async (ids: string[]): Promise<Character[]> => {
@@ -156,13 +231,13 @@ export const charactersDb = {
     for (const chunk of chunks) {
       const q = query(collection(firestore, "characters"), where("__name__", "in", chunk));
       const snap = await getDocs(q);
-      results.push(...snap.docs.map(d => fromDoc<Character>(d)));
+      results.push(...snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted));
     }
     return results;
   },
 
   create: async (data: Omit<Character, "id" | "createdAt">): Promise<string> => {
-    const ref = await addDoc(collection(firestore, "characters"), { ...data, createdAt: ts() });
+    const ref = await addDoc(collection(firestore, "characters"), { ...data, createdAt: ts(), wins: 0, losses: 0, totalDuels: 0, tierSum: 0, tierCount: 0, tierAverage: 0 });
     await universesDb.incrementCharacterCount(data.seriesId, 1);
     return ref.id;
   },
@@ -181,6 +256,14 @@ export const charactersDb = {
     if (char) await universesDb.incrementCharacterCount(char.seriesId, -1);
   },
 
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    const char = await charactersDb.getById(id);
+    await updateDoc(doc(firestore, "characters", id), {
+      deleted: true, deletedAt: ts(), deletedBy
+    });
+    if (char) await universesDb.incrementCharacterCount(char.seriesId, -1);
+  },
+
   checkDuplicate: async (name: string, seriesId: string): Promise<boolean> => {
     const q = query(
       collection(firestore, "characters"),
@@ -188,7 +271,7 @@ export const charactersDb = {
       where("name", "==", name)
     );
     const snap = await getDocs(q);
-    return !snap.empty;
+    return snap.docs.some(d => !(d.data().deleted));
   },
 };
 
@@ -206,7 +289,7 @@ export const testsDb = {
     if (filters?.sort === "new") q = query(col, orderBy("createdAt", "desc"), limit(lim));
     if (filters?.sort === "trending") q = query(col, orderBy("likeCount", "desc"), limit(lim));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Test>(d));
+    let results = snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(t => t.title.toLowerCase().includes(s) || t.description.toLowerCase().includes(s));
@@ -222,7 +305,7 @@ export const testsDb = {
   getByCreator: async (creatorId: string): Promise<Test[]> => {
     const q = query(collection(firestore, "tests"), where("creatorId", "==", creatorId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => fromDoc<Test>(d));
+    return snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
   },
 
   create: async (data: Omit<Test, "id" | "createdAt" | "playCount" | "likeCount" | "favoriteCount" | "stats">): Promise<string> => {
@@ -243,6 +326,12 @@ export const testsDb = {
     await deleteDoc(doc(firestore, "tests", id));
   },
 
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tests", id), {
+      deleted: true, deletedAt: ts(), deletedBy
+    });
+  },
+
   incrementPlayCount: async (id: string): Promise<void> => {
     await updateDoc(doc(firestore, "tests", id), { playCount: increment(1) });
   },
@@ -253,12 +342,19 @@ export const testsDb = {
 export const duelsDb = {
   getAll: async (): Promise<Duel[]> => {
     const snap = await getDocs(collection(firestore, "duels"));
-    return snap.docs.map(d => fromDoc<Duel>(d));
+    return snap.docs.map(d => fromDoc<Duel>(d)).filter(d => !d.deleted);
   },
 
   getById: async (id: string): Promise<Duel | null> => {
     const snap = await getDoc(doc(firestore, "duels", id));
     return snap.exists() ? ({ id: snap.id, ...snap.data() } as Duel) : null;
+  },
+
+  getByCreator: async (creatorId: string): Promise<Duel[]> => {
+    const snap = await getDocs(collection(firestore, "duels"));
+    return snap.docs
+      .map(d => fromDoc<Duel>(d))
+      .filter(d => d.creatorId === creatorId && !d.deleted);
   },
 
   create: async (data: Omit<Duel, "id" | "createdAt" | "votesA" | "votesB">): Promise<string> => {
@@ -268,13 +364,119 @@ export const duelsDb = {
     return ref.id;
   },
 
-  vote: async (id: string, side: "A" | "B"): Promise<void> => {
-    const field = side === "A" ? "votesA" : "votesB";
-    await updateDoc(doc(firestore, "duels", id), { [field]: increment(1) });
+  vote: async (id: string, side: "A" | "B", voterId?: string): Promise<void> => {
+    const duelSnap = await getDoc(doc(firestore, "duels", id));
+    if (!duelSnap.exists()) throw new Error("Duel not found");
+    const duel = { id: duelSnap.id, ...duelSnap.data() } as Duel;
+
+    const winnerId = side === "A" ? duel.characterAId : duel.characterBId;
+    const loserId = side === "A" ? duel.characterBId : duel.characterAId;
+    const voteField = side === "A" ? "votesA" : "votesB";
+
+    const batch = writeBatch(firestore);
+    batch.update(doc(firestore, "duels", id), { [voteField]: increment(1) });
+    batch.update(doc(firestore, "characters", winnerId), {
+      wins: increment(1),
+      totalDuels: increment(1),
+    });
+    batch.update(doc(firestore, "characters", loserId), {
+      losses: increment(1),
+      totalDuels: increment(1),
+    });
+
+    // Notify duel creator if someone else voted
+    if (duel.creatorId && duel.creatorId !== voterId) {
+      const notifRef = doc(collection(firestore, "notifications"));
+      batch.set(notifRef, {
+        userId: duel.creatorId,
+        type: "duel_vote",
+        message: "Your duel received a new vote!",
+        read: false,
+        createdAt: ts(),
+        data: { duelId: id },
+      });
+    }
+
+    await batch.commit();
   },
 
   delete: async (id: string): Promise<void> => {
     await deleteDoc(doc(firestore, "duels", id));
+  },
+
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "duels", id), {
+      deleted: true, deletedAt: ts(), deletedBy
+    });
+  },
+};
+
+// ── Tier Votes ────────────────────────────────────────────────────────────────
+
+export const tierVotesDb = {
+  getUserVote: async (userId: string, characterId: string): Promise<TierVote | null> => {
+    const snap = await getDoc(doc(firestore, "tierVotes", `${userId}_${characterId}`));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as TierVote) : null;
+  },
+
+  getUserVotes: async (userId: string): Promise<TierVote[]> => {
+    const q = query(collection(firestore, "tierVotes"), where("userId", "==", userId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<TierVote>(d));
+  },
+
+  vote: async (userId: string, characterId: string, tier: TierVote["tier"]): Promise<void> => {
+    const newScore = TIER_SCORES[tier];
+    const voteRef = doc(firestore, "tierVotes", `${userId}_${characterId}`);
+    const charRef = doc(firestore, "characters", characterId);
+
+    await runTransaction(firestore, async (tx) => {
+      const [voteSnap, charSnap] = await Promise.all([tx.get(voteRef), tx.get(charRef)]);
+
+      let tierSum = ((charSnap.data()?.tierSum as number) ?? 0);
+      let tierCount = ((charSnap.data()?.tierCount as number) ?? 0);
+
+      if (voteSnap.exists()) {
+        const oldScore = TIER_SCORES[voteSnap.data().tier as TierVote["tier"]];
+        tierSum = tierSum - oldScore + newScore;
+        tx.update(voteRef, { tier, updatedAt: ts() });
+      } else {
+        tierSum += newScore;
+        tierCount += 1;
+        tx.set(voteRef, { userId, characterId, tier, createdAt: ts(), updatedAt: ts() });
+      }
+
+      const tierAverage = tierCount > 0 ? tierSum / tierCount : 0;
+      tx.update(charRef, { tierSum, tierCount, tierAverage });
+    });
+  },
+};
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export const notificationsDb = {
+  getForUser: async (userId: string): Promise<Notification[]> => {
+    const q = query(collection(firestore, "notifications"), where("userId", "==", userId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<Notification>(d))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 20);
+  },
+
+  markRead: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "notifications", id), { read: true });
+  },
+
+  markAllRead: async (userId: string): Promise<void> => {
+    const q = query(
+      collection(firestore, "notifications"),
+      where("userId", "==", userId),
+      where("read", "==", false)
+    );
+    const snap = await getDocs(q);
+    const batch = writeBatch(firestore);
+    snap.docs.forEach(d => batch.update(d.ref, { read: true }));
+    await batch.commit();
   },
 };
 
@@ -350,6 +552,36 @@ export const favoritesDb = {
         }
       });
     }
+
+    // Notify universe creator on favorite
+    if (itemType === "universe") {
+      const snap = await getDoc(favRef);
+      if (!snap.exists()) {
+        const uniSnap = await getDoc(doc(firestore, "universes", itemId));
+        if (uniSnap.exists()) {
+          const creatorId = uniSnap.data().creatorId;
+          if (creatorId && creatorId !== userId) {
+            const batch = writeBatch(firestore);
+            batch.set(favRef, { userId, itemId, itemType, createdAt: ts() });
+            const notifRef = doc(collection(firestore, "notifications"));
+            batch.set(notifRef, {
+              userId: creatorId,
+              type: "universe_favorited",
+              message: "Your universe was favorited!",
+              read: false,
+              createdAt: ts(),
+              data: { universeId: itemId },
+            });
+            await batch.commit();
+            return true;
+          }
+        }
+      } else {
+        await deleteDoc(favRef);
+        return false;
+      }
+    }
+
     const snap = await getDoc(favRef);
     if (snap.exists()) {
       await deleteDoc(favRef);
@@ -387,6 +619,28 @@ export const recentlyPlayedDb = {
   },
 };
 
+// ── Duel vote deduplication (local) ───────────────────────────────────────────
+
+const VOTED_DUELS_KEY = "charcomp_voted_duels";
+
+export const duelVoteTracker = {
+  hasVoted: (duelId: string): boolean => {
+    try {
+      const voted: string[] = JSON.parse(localStorage.getItem(VOTED_DUELS_KEY) || "[]");
+      return voted.includes(duelId);
+    } catch { return false; }
+  },
+  markVoted: (duelId: string): void => {
+    try {
+      const voted: string[] = JSON.parse(localStorage.getItem(VOTED_DUELS_KEY) || "[]");
+      if (!voted.includes(duelId)) {
+        voted.push(duelId);
+        localStorage.setItem(VOTED_DUELS_KEY, JSON.stringify(voted));
+      }
+    } catch { /* ignore */ }
+  },
+};
+
 // ── Sessions (local only) ─────────────────────────────────────────────────────
 
 const getJSON = <T>(key: string, def: T): T => {
@@ -404,13 +658,23 @@ export const sessionsDb = {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export const searchDb = {
-  all: async (query: string): Promise<{ universes: Universe[]; characters: Character[]; tests: Test[] }> => {
-    const [universes, characters, tests] = await Promise.all([
-      universesDb.getAll({ search: query }),
-      charactersDb.getAll({ search: query }),
-      testsDb.getAll({ search: query }),
+  all: async (searchQuery: string): Promise<{ universes: Universe[]; characters: Character[]; tests: Test[]; duels: Duel[] }> => {
+    const [universes, characters, tests, duels] = await Promise.all([
+      universesDb.getAll({ search: searchQuery }),
+      charactersDb.getAll({ search: searchQuery }),
+      testsDb.getAll({ search: searchQuery }),
+      duelsDb.getAll(),
     ]);
-    return { universes: universes.slice(0, 5), characters: characters.slice(0, 5), tests: tests.slice(0, 5) };
+    const s = searchQuery.toLowerCase();
+    const filteredDuels = duels.filter(d =>
+      d.title?.toLowerCase().includes(s) || d.description?.toLowerCase().includes(s)
+    );
+    return {
+      universes: universes.slice(0, 5),
+      characters: characters.slice(0, 5),
+      tests: tests.slice(0, 5),
+      duels: filteredDuels.slice(0, 5),
+    };
   },
 };
 
@@ -418,10 +682,18 @@ export const searchDb = {
 
 export const duplicateCheck = {
   universe: async (name: string): Promise<Universe | null> => {
-    const all = await universesDb.getAll();
-    return all.find(u => u.name.toLowerCase() === name.toLowerCase()) ?? null;
+    try {
+      const all = await universesDb.getAll();
+      return all.find(u => u.name.toLowerCase() === name.toLowerCase()) ?? null;
+    } catch {
+      return null;
+    }
   },
   character: async (name: string, seriesId: string): Promise<boolean> => {
-    return charactersDb.checkDuplicate(name, seriesId);
+    try {
+      return charactersDb.checkDuplicate(name, seriesId);
+    } catch {
+      return false;
+    }
   },
 };

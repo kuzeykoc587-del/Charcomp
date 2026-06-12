@@ -11,15 +11,15 @@ const REQUIRED_VARS = [
   "VITE_FIREBASE_APP_ID",
 ] as const;
 
-const missing = REQUIRED_VARS.filter(
-  (k) => !import.meta.env[k]
-);
+const missing = REQUIRED_VARS.filter((k) => !import.meta.env[k]);
+
 if (missing.length > 0) {
-  console.error(
-    "[CharComp] Missing required Firebase environment variables:\n" +
-      missing.map((k) => `  • ${k}`).join("\n") +
-      "\nAdd them to your .env file or Vercel environment settings."
-  );
+  const message =
+    `Firebase configuration is incomplete. Missing environment variables:\n` +
+    missing.map((k) => `  • ${k}`).join("\n") +
+    `\n\nAdd them to your Vercel project settings under Settings → Environment Variables, then redeploy.`;
+  console.error("[CharComp]", message);
+  throw new Error(message);
 }
 
 const firebaseConfig = {
