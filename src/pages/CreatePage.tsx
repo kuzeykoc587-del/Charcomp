@@ -1,149 +1,159 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
-import { CharacterPoolSelector } from "../components/CharacterPoolSelector";
-import { ImageUpload } from "../components/ImageUpload";
+import { CreateDuelModal } from "../components/CreateDuelModal";
+import { CreateUniverseModal } from "../components/CreateUniverseModal";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { Label } from "../components/ui/label";
+import { FileText, Swords, LayoutList, Globe, UserPlus, ChevronRight } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../hooks/use-toast";
-import { testsDb } from "../lib/db";
-import { Loader2 } from "lucide-react";
 
 export default function CreatePage() {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [step, setStep] = useState(1);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [coverImage, setCoverImage] = useState("");
-  const [pool, setPool] = useState<string[]>([]);
-  const [publishing, setPublishing] = useState(false);
+  const [duelModalOpen, setDuelModalOpen] = useState(false);
+  const [universeModalOpen, setUniverseModalOpen] = useState(false);
 
   if (!user) {
     return (
-      <div className="min-h-[100dvh] flex flex-col bg-muted/20 pb-20 md:pb-0">
+      <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
         <Header />
-        <main className="flex-1 flex items-center justify-center p-4">
-          <div className="bg-card p-8 rounded-2xl border shadow-lg text-center max-w-sm w-full">
-            <h2 className="text-2xl font-black mb-4">Login Required</h2>
-            <p className="text-muted-foreground mb-8">You need to log in to create your own tests.</p>
-            <Button className="w-full" onClick={() => setLocation("/login")}>Go to Login</Button>
+        <main className="flex-1 flex items-center justify-center flex-col gap-6 px-4 text-center">
+          <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center mx-auto">
+            <FileText size={32} className="text-primary" />
           </div>
+          <div>
+            <h1 className="text-2xl font-black">{t("nav_create")}</h1>
+            <p className="text-muted-foreground mt-2">İçerik oluşturmak için giriş yapmanız gerekiyor.</p>
+          </div>
+          <Link href="/login">
+            <Button size="lg" className="gap-2">
+              {t("auth_login")} <ChevronRight size={16} />
+            </Button>
+          </Link>
         </main>
       </div>
     );
   }
 
-  const handlePublish = async () => {
-    if (!title || pool.length < 2) {
-      toast({ title: "Error", description: "Title and at least 2 characters required", variant: "destructive" });
-      return;
-    }
-    setPublishing(true);
-    try {
-      const id = await testsDb.create({
-        title,
-        description,
-        coverImage: coverImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=7C3AED&color=fff&size=400&bold=true`,
-        creatorId: user.id,
-        language,
-        characterIds: pool,
-      });
-      toast({ title: "Success", description: t("msg_publish_success") });
-      setLocation(`/test/${id}`);
-    } catch {
-      toast({ title: "Error", description: "Failed to publish test", variant: "destructive" });
-    } finally {
-      setPublishing(false);
-    }
-  };
+  const primaryActions = [
+    {
+      icon: FileText,
+      title: t("btn_create_test"),
+      desc: "Turnuva veya sıralama modu ile karakter testi oluştur",
+      href: "/create/test",
+      gradient: "from-violet-500 to-purple-600",
+    },
+    {
+      icon: Swords,
+      title: t("btn_create_duel"),
+      desc: "İki karakter arasında 1v1 düello kur, topluluğun oy versin",
+      href: null as string | null,
+      onClick: () => setDuelModalOpen(true),
+      gradient: "from-red-500 to-rose-600",
+    },
+    {
+      icon: LayoutList,
+      title: t("btn_create_tierlist"),
+      desc: "Karakterleri sıralara koy, herkes kendi sıralamasını yapabilsin",
+      href: "/create/tierlist",
+      gradient: "from-blue-500 to-cyan-600",
+    },
+  ];
+
+  const secondaryActions = [
+    {
+      icon: Globe,
+      title: t("lbl_create_universe"),
+      desc: "Yeni bir evren ekle",
+      onClick: () => setUniverseModalOpen(true),
+      href: null as string | null,
+    },
+    {
+      icon: UserPlus,
+      title: t("lbl_create_character"),
+      desc: "Mevcut bir evrene karakter ekle",
+      href: "/universes",
+      onClick: undefined as (() => void) | undefined,
+    },
+  ];
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-muted/20 pb-20 md:pb-0">
+    <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
       <Header />
-      <main className="flex-1 container mx-auto px-4 py-8 max-w-4xl">
+      <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
+        <h1 className="text-2xl font-black mb-2">{t("nav_create")}</h1>
+        <p className="text-muted-foreground mb-8">Ne oluşturmak istiyorsunuz?</p>
 
-        <div className="flex justify-between items-center mb-12 relative">
-          <div className="absolute top-1/2 left-0 right-0 h-1 bg-border -z-10" />
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex flex-col items-center gap-2 bg-background p-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${step >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground border-2 border-border"}`}>
-                {s}
+        <div className="grid gap-4 mb-8">
+          {primaryActions.map(action => {
+            const Icon = action.icon;
+            const inner = (
+              <div className="group border rounded-2xl p-5 bg-card hover:border-primary transition-all cursor-pointer shadow-sm hover:shadow-lg flex gap-4 items-start">
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center shrink-0`}>
+                  <Icon size={22} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-bold group-hover:text-primary transition-colors">{action.title}</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">{action.desc}</p>
+                </div>
+                <ChevronRight size={18} className="text-muted-foreground group-hover:text-primary shrink-0 mt-1 transition-colors" />
               </div>
-              <span className="text-xs font-medium hidden sm:block">
-                {s === 1 ? t("lbl_step_1") : s === 2 ? t("lbl_step_2") : t("lbl_step_3")}
-              </span>
-            </div>
-          ))}
+            );
+            if (action.href) {
+              return <Link key={action.title} href={action.href}>{inner}</Link>;
+            }
+            return <div key={action.title} onClick={action.onClick}>{inner}</div>;
+          })}
         </div>
 
-        <div className="bg-card border rounded-2xl p-6 md:p-8 shadow-sm">
-          {step === 1 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="title">{t("ph_test_title")}</Label>
-                    <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Best Shonen Hero" className="text-lg py-6" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="desc">{t("ph_test_desc")}</Label>
-                    <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your test..." rows={4} />
-                  </div>
+        <div className="border-t pt-6">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Diğer</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {secondaryActions.map(action => {
+              const Icon = action.icon;
+              const inner = (
+                <div className="group border rounded-xl p-4 bg-card hover:border-primary transition-all cursor-pointer">
+                  <Icon size={20} className="text-muted-foreground group-hover:text-primary mb-2 transition-colors" />
+                  <p className="font-semibold text-sm group-hover:text-primary transition-colors">{action.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{action.desc}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Cover Image</Label>
-                  <ImageUpload value={coverImage} onChange={setCoverImage} />
-                </div>
-              </div>
-              <div className="flex justify-end pt-4">
-                <Button onClick={() => setStep(2)} disabled={!title}>{t("btn_next")}</Button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-6 animate-in fade-in">
-              <CharacterPoolSelector selectedIds={pool} onChange={setPool} />
-              <div className="flex justify-between pt-4">
-                <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-                <Button onClick={() => setStep(3)} disabled={pool.length < 2}>{t("btn_next")}</Button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-8 animate-in fade-in">
-              <div className="flex flex-col md:flex-row gap-8 items-start">
-                <div className="w-full md:w-1/3 aspect-square rounded-xl overflow-hidden bg-muted border">
-                  <img src={coverImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=7C3AED&color=fff&size=400&bold=true`} alt="Cover" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 space-y-4">
-                  <h2 className="text-3xl font-black">{title}</h2>
-                  <p className="text-muted-foreground">{description || "No description provided."}</p>
-                  <div className="inline-flex bg-primary/10 text-primary px-3 py-1 rounded-full font-bold text-sm">
-                    {pool.length} Characters in Pool
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-                <Button size="lg" className="px-8 gap-2" onClick={handlePublish} disabled={publishing}>
-                  {publishing && <Loader2 size={16} className="animate-spin" />}
-                  {t("btn_publish")}
-                </Button>
-              </div>
-            </div>
-          )}
+              );
+              if (action.href) {
+                return <Link key={action.title} href={action.href}>{inner}</Link>;
+              }
+              return <div key={action.title} onClick={action.onClick}>{inner}</div>;
+            })}
+          </div>
         </div>
       </main>
+
+      <CreateDuelModal
+        open={duelModalOpen}
+        onClose={() => setDuelModalOpen(false)}
+        onCreated={() => {
+          setDuelModalOpen(false);
+          qc.invalidateQueries({ queryKey: ["duels"] });
+          toast({ title: t("msg_duel_created") });
+          setLocation("/duels");
+        }}
+      />
+      <CreateUniverseModal
+        open={universeModalOpen}
+        onClose={() => setUniverseModalOpen(false)}
+        onCreated={() => {
+          setUniverseModalOpen(false);
+          qc.invalidateQueries({ queryKey: ["universes"] });
+          toast({ title: t("msg_universe_created") });
+          setLocation("/universes");
+        }}
+      />
     </div>
   );
 }

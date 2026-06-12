@@ -12,6 +12,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import HomePage from "./pages/HomePage";
 import ExplorePage from "./pages/ExplorePage";
 import CreatePage from "./pages/CreatePage";
+import CreateTestPage from "./pages/CreateTestPage";
+import CreateTierListPage from "./pages/CreateTierListPage";
 import TestDetailPage from "./pages/TestDetailPage";
 import TournamentPage from "./pages/TournamentPage";
 import RankingPage from "./pages/RankingPage";
@@ -27,6 +29,8 @@ import AdminPage from "./pages/AdminPage";
 import SearchPage from "./pages/SearchPage";
 import GlobalRankingPage from "./pages/GlobalRankingPage";
 import TierlistPage from "./pages/TierlistPage";
+import TierListsPage from "./pages/TierListsPage";
+import TierListPlayPage from "./pages/TierListPlayPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +47,8 @@ function Router() {
       <Route path="/" component={HomePage} />
       <Route path="/explore" component={ExplorePage} />
       <Route path="/create" component={CreatePage} />
+      <Route path="/create/test" component={CreateTestPage} />
+      <Route path="/create/tierlist" component={CreateTierListPage} />
       <Route path="/test/:id" component={TestDetailPage} />
       <Route path="/play/:testId/tournament" component={TournamentPage} />
       <Route path="/play/:testId/ranking" component={RankingPage} />
@@ -57,7 +63,9 @@ function Router() {
       <Route path="/admin" component={AdminPage} />
       <Route path="/search" component={SearchPage} />
       <Route path="/ranking" component={GlobalRankingPage} />
-      <Route path="/tierlist" component={TierlistPage} />
+      <Route path="/tierlist" component={TierListsPage} />
+      <Route path="/tierlist/:id" component={TierListPlayPage} />
+      <Route path="/community-tierlist" component={TierlistPage} />
       <Route component={NotFound} />
     </Switch>
   );

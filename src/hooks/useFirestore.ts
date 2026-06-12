@@ -2,7 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, universesDb, charactersDb, duelsDb,
   likesDb, favoritesDb, recentlyPlayedDb, tierVotesDb, notificationsDb,
-  type Test, type Universe, type Character, type Duel, type FavoriteItem, type TierVote, type Notification
+  tierListsDb, tierListResultsDb,
+  type Test, type Universe, type Character, type Duel, type FavoriteItem, type TierVote, type Notification,
+  type TierList, type TierListResult
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -206,6 +208,37 @@ export const useToggleFavorite = () => {
     },
   });
 };
+
+// ── Tier Lists ────────────────────────────────────────────────────────────────
+
+export const useTierLists = (filters?: { search?: string }) =>
+  useQuery<TierList[]>({
+    queryKey: ["tierlists", filters],
+    queryFn: () => tierListsDb.getAll(filters),
+    staleTime: 30_000,
+  });
+
+export const useTierList = (id: string | undefined) =>
+  useQuery<TierList | null>({
+    queryKey: ["tierlist", id],
+    queryFn: () => (id ? tierListsDb.getById(id) : null),
+    enabled: Boolean(id),
+  });
+
+export const useTierListsByCreator = (creatorId: string | undefined) =>
+  useQuery<TierList[]>({
+    queryKey: ["tierlists-by-creator", creatorId],
+    queryFn: () => (creatorId ? tierListsDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
+export const useTierListResult = (userId: string | undefined, tierListId: string | undefined) =>
+  useQuery<TierListResult | null>({
+    queryKey: ["tierlist-result", userId, tierListId],
+    queryFn: () => (userId && tierListId ? tierListResultsDb.getResult(userId, tierListId) : null),
+    enabled: Boolean(userId && tierListId),
+    staleTime: 30_000,
+  });
 
 // ── Recently Played ───────────────────────────────────────────────────────────
 
