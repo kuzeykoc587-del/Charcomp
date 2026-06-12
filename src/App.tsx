@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import { Loader2, Swords } from "lucide-react";
+import { Loader2, Swords, AlertTriangle } from "lucide-react";
 
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -64,7 +64,7 @@ function Router() {
 }
 
 function AppShell() {
-  const { authLoading } = useAuth();
+  const { authLoading, authError } = useAuth();
 
   if (authLoading) {
     return (
@@ -74,6 +74,35 @@ function AppShell() {
           <span>CharComp</span>
         </div>
         <Loader2 className="animate-spin text-primary" size={24} />
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background gap-6 p-6">
+        <div className="flex items-center gap-2 font-black text-2xl text-primary">
+          <Swords size={28} />
+          <span>CharComp</span>
+        </div>
+        <div className="max-w-md w-full bg-card border border-border rounded-xl p-6 text-center flex flex-col items-center gap-4">
+          <AlertTriangle className="text-yellow-500" size={36} />
+          <h2 className="font-bold text-lg">Firebase connection issue</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            The app could not connect to Firebase Auth. This usually means the
+            environment variables are missing in Vercel, or your domain is not
+            listed in Firebase → Authentication → Authorized Domains.
+          </p>
+          <pre className="w-full bg-muted text-destructive text-xs rounded-lg p-3 text-left overflow-x-auto whitespace-pre-wrap break-words">
+            {authError}
+          </pre>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

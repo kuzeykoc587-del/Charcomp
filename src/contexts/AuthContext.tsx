@@ -14,6 +14,7 @@ import { usersDb, AppUser } from "../lib/db";
 interface AuthContextType {
   user: AppUser | null;
   authLoading: boolean;
+  authError: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -22,8 +23,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const PROFILE_TIMEOUT_MS = 6000;
+const AUTH_SAFETY_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 const buildProfile = async (firebaseUser: import("firebase/auth").User): Promise<AppUser> => {
-  const profileFromDb = await usersDb.getById(firebaseUser.uid);
+  const profileFromDb = await withTimeout(
+    usersDb.getById(firebaseUser.uid),
+    PROFILE_TIMEOUT_MS,
+    "Firestore getById"
+  );
   const profile: AppUser = profileFromDb ?? {
     id: firebaseUser.uid,
     name: firebaseUser.displayName ?? firebaseUser.email?.split("@")[0] ?? "User",
@@ -35,29 +52,77 @@ const buildProfile = async (firebaseUser: import("firebase/auth").User): Promise
     bio: "",
     email: firebaseUser.email ?? "",
   };
-  if (!profileFromDb) await usersDb.upsert(profile);
+  if (!profileFromDb) {
+    try {
+      await withTimeout(usersDb.upsert(profile), PROFILE_TIMEOUT_MS, "Firestore upsert");
+    } catch (e) {
+      console.error("[CharComp] Could not persist user profile (non-fatal):", e);
+    }
+  }
   return profile;
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const profile = await buildProfile(firebaseUser);
-          setUser(profile);
-        } catch {
+    let settled = false;
+
+    function finish() {
+      if (!settled) {
+        settled = true;
+        setAuthLoading(false);
+      }
+    }
+
+    // Safety net: if onAuthStateChanged never fires (Firebase blocked, network issue, etc.)
+    // force the loading state off so the app doesn't hang forever.
+    const safetyTimer = setTimeout(() => {
+      if (!settled) {
+        console.error(
+          "[CharComp] Firebase Auth did not respond within 10s. " +
+          "Check that VITE_FIREBASE_* env vars are set in Vercel and the site domain " +
+          "is listed in Firebase Console → Authentication → Authorized domains."
+        );
+        setAuthError(
+          "Firebase Auth did not respond. Check your Vercel environment variables and Firebase authorized domains."
+        );
+        finish();
+      }
+    }, AUTH_SAFETY_TIMEOUT_MS);
+
+    const unsub = onAuthStateChanged(
+      auth,
+      async (firebaseUser) => {
+        clearTimeout(safetyTimer);
+        if (firebaseUser) {
+          try {
+            const profile = await buildProfile(firebaseUser);
+            setUser(profile);
+          } catch (err) {
+            console.error("[CharComp] Failed to load user profile:", err);
+            setUser(null);
+          }
+        } else {
           setUser(null);
         }
-      } else {
-        setUser(null);
+        finish();
+      },
+      (err) => {
+        // Firebase Auth itself threw — still unblock the app
+        console.error("[CharComp] onAuthStateChanged error:", err);
+        clearTimeout(safetyTimer);
+        setAuthError(err.message);
+        finish();
       }
-      setAuthLoading(false);
-    });
-    return unsub;
+    );
+
+    return () => {
+      clearTimeout(safetyTimer);
+      unsub();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -87,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, authLoading, signIn, signUp, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, authLoading, authError, signIn, signUp, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
