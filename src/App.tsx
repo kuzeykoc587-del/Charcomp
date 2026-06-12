@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,10 +10,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 import HomePage from "./pages/HomePage";
-import ExplorePage from "./pages/ExplorePage";
+import TestsPage from "./pages/TestsPage";
 import CreatePage from "./pages/CreatePage";
-import CreateTestPage from "./pages/CreateTestPage";
-import CreateTierListPage from "./pages/CreateTierListPage";
 import TestDetailPage from "./pages/TestDetailPage";
 import TournamentPage from "./pages/TournamentPage";
 import RankingPage from "./pages/RankingPage";
@@ -26,11 +24,8 @@ import LoginPage from "./pages/LoginPage";
 import UniversesPage from "./pages/UniversesPage";
 import UniverseDetailPage from "./pages/UniverseDetailPage";
 import AdminPage from "./pages/AdminPage";
-import SearchPage from "./pages/SearchPage";
 import GlobalRankingPage from "./pages/GlobalRankingPage";
 import TierlistPage from "./pages/TierlistPage";
-import TierListsPage from "./pages/TierListsPage";
-import TierListPlayPage from "./pages/TierListPlayPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,28 +39,35 @@ const queryClient = new QueryClient({
 function Router() {
   return (
     <Switch>
+      {/* ── Primary routes ─────────────────────────────────────── */}
       <Route path="/" component={HomePage} />
-      <Route path="/explore" component={ExplorePage} />
+      <Route path="/tests" component={TestsPage} />
+      <Route path="/duels" component={DuelsPage} />
+      <Route path="/tierlist" component={TierlistPage} />
+      <Route path="/universes" component={UniversesPage} />
+      <Route path="/universe/:id" component={UniverseDetailPage} />
       <Route path="/create" component={CreatePage} />
-      <Route path="/create/test" component={CreateTestPage} />
-      <Route path="/create/tierlist" component={CreateTierListPage} />
+      <Route path="/profile" component={ProfilePage} />
+      <Route path="/login" component={LoginPage} />
+
+      {/* ── Test play routes ───────────────────────────────────── */}
       <Route path="/test/:id" component={TestDetailPage} />
       <Route path="/play/:testId/tournament" component={TournamentPage} />
       <Route path="/play/:testId/ranking" component={RankingPage} />
       <Route path="/result/:testId/tournament/:sessionId" component={TournamentResultPage} />
       <Route path="/result/:testId/ranking/:sessionId" component={RankingResultPage} />
-      <Route path="/duels" component={DuelsPage} />
-      <Route path="/favorites" component={FavoritesPage} />
-      <Route path="/profile" component={ProfilePage} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/universes" component={UniversesPage} />
-      <Route path="/universe/:id" component={UniverseDetailPage} />
-      <Route path="/admin" component={AdminPage} />
-      <Route path="/search" component={SearchPage} />
+
+      {/* ── Kept alive (not in nav, still accessible) ─────────── */}
       <Route path="/ranking" component={GlobalRankingPage} />
-      <Route path="/tierlist" component={TierListsPage} />
-      <Route path="/tierlist/:id" component={TierListPlayPage} />
-      <Route path="/community-tierlist" component={TierlistPage} />
+      <Route path="/favorites" component={FavoritesPage} />
+      <Route path="/admin" component={AdminPage} />
+
+      {/* ── Backward-compat redirects ──────────────────────────── */}
+      {/* /explore was the old tests browse page */}
+      <Route path="/explore">{() => <Redirect to="/tests" />}</Route>
+      {/* /search had its own page; now search lives inside each section */}
+      <Route path="/search">{() => <Redirect to="/tests" />}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );

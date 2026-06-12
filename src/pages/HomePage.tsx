@@ -1,102 +1,96 @@
-import { useState } from "react";
+import { Link } from "wouter";
 import { Header } from "../components/Header";
-import { TestCard } from "../components/TestCard";
 import { useTranslation } from "../contexts/LanguageContext";
-import { useAuth } from "../contexts/AuthContext";
-import { useTests, useUserFavorites, useRecentlyPlayedTests } from "../hooks/useFirestore";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Loader2, Search } from "lucide-react";
+import { FlaskConical, Swords, LayoutList, Shuffle } from "lucide-react";
 
-type Filter = "popular" | "new" | "trending" | "favorites" | "mine" | "recent";
+interface CategoryCard {
+  titleKey: "home_category_tests" | "home_category_duels" | "home_category_tierlists" | "home_category_thisorthat";
+  descKey: "home_tests_desc" | "home_duels_desc" | "home_tierlists_desc" | "home_thisorthat_desc";
+  href: string;
+  icon: React.ReactNode;
+  gradient: string;
+  comingSoon?: boolean;
+}
+
+const CATEGORIES: CategoryCard[] = [
+  {
+    titleKey: "home_category_tests",
+    descKey: "home_tests_desc",
+    href: "/tests",
+    icon: <FlaskConical size={32} />,
+    gradient: "from-violet-500/20 to-purple-600/10 border-violet-500/30",
+  },
+  {
+    titleKey: "home_category_duels",
+    descKey: "home_duels_desc",
+    href: "/duels",
+    icon: <Swords size={32} />,
+    gradient: "from-rose-500/20 to-red-600/10 border-rose-500/30",
+  },
+  {
+    titleKey: "home_category_tierlists",
+    descKey: "home_tierlists_desc",
+    href: "/tierlist",
+    icon: <LayoutList size={32} />,
+    gradient: "from-amber-500/20 to-yellow-600/10 border-amber-500/30",
+  },
+  {
+    titleKey: "home_category_thisorthat",
+    descKey: "home_thisorthat_desc",
+    href: "/this-or-that",
+    icon: <Shuffle size={32} />,
+    gradient: "from-sky-500/20 to-blue-600/10 border-sky-500/30",
+    comingSoon: true,
+  },
+];
 
 export default function HomePage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const [filter, setFilter] = useState<Filter>("popular");
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const { data: allTests = [], isLoading } = useTests({
-    sort: (filter === "popular" || filter === "favorites" || filter === "mine" || filter === "recent")
-      ? "popular"
-      : filter,
-    search: searchTerm.length >= 2 ? searchTerm : undefined,
-  });
-
-  const { data: userFavorites = [] } = useUserFavorites(
-    filter === "favorites" ? user?.id : undefined,
-    "test"
-  );
-  const favoriteIds = new Set(userFavorites.map(f => f.itemId));
-  const recentTests = useRecentlyPlayedTests(allTests);
-
-  const filteredTests = (() => {
-    if (filter === "favorites") return allTests.filter(t => favoriteIds.has(t.id));
-    if (filter === "mine") return allTests.filter(t => user && t.creatorId === user.id);
-    if (filter === "recent") return recentTests;
-    return allTests;
-  })();
-
-  const filters: { key: Filter; label: string; requiresAuth?: boolean }[] = [
-    { key: "popular", label: t("filter_popular") },
-    { key: "new", label: t("filter_new") },
-    { key: "trending", label: t("filter_trending") },
-    { key: "favorites", label: t("filter_favorites"), requiresAuth: true },
-    { key: "mine", label: t("filter_my_tests"), requiresAuth: true },
-    { key: "recent", label: t("filter_recent") },
-  ];
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
       <Header />
-      <main className="flex-1 container mx-auto px-4 py-6">
+      <main className="flex-1 container mx-auto px-4 py-10 max-w-2xl">
 
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t("ph_search_tests")}
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
+        <div className="mb-10 text-center">
+          <h1 className="text-3xl font-black tracking-tight mb-2">CharComp</h1>
+          <p className="text-muted-foreground text-sm">Choose a category to get started</p>
         </div>
 
-        {!searchTerm && (
-          <div className="flex overflow-x-auto pb-3 gap-2 mb-6 hide-scrollbar">
-            {filters.map(({ key, label, requiresAuth }) => {
-              if (requiresAuth && !user) return null;
-              return (
-                <Button
-                  key={key}
-                  variant={filter === key ? "default" : "outline"}
-                  onClick={() => setFilter(key)}
-                  className="rounded-full shrink-0"
-                  size="sm"
-                >
-                  {label}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="animate-spin text-primary" size={32} />
-          </div>
-        ) : filteredTests.length === 0 ? (
-          <div className="text-center py-20 border-2 border-dashed rounded-xl">
-            <p className="text-muted-foreground">{t("empty_tests")}</p>
-          </div>
-        ) : (
-          <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
-            {filteredTests.map(test => (
-              <div key={test.id} className="break-inside-avoid">
-                <TestCard test={test} />
+        <div className="grid grid-cols-2 gap-4">
+          {CATEGORIES.map((cat) => {
+            const card = (
+              <div
+                className={`relative flex flex-col gap-3 rounded-2xl border bg-gradient-to-br p-5 transition-all ${cat.gradient} ${
+                  cat.comingSoon
+                    ? "opacity-60 cursor-not-allowed"
+                    : "hover:scale-[1.02] hover:shadow-lg cursor-pointer active:scale-[0.98]"
+                }`}
+              >
+                {cat.comingSoon && (
+                  <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+                    {t("home_coming_soon")}
+                  </span>
+                )}
+                <div className="text-foreground/80">{cat.icon}</div>
+                <div>
+                  <p className="font-black text-base leading-tight">{t(cat.titleKey)}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">{t(cat.descKey)}</p>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            );
+
+            if (cat.comingSoon) {
+              return <div key={cat.href}>{card}</div>;
+            }
+
+            return (
+              <Link key={cat.href} href={cat.href}>
+                {card}
+              </Link>
+            );
+          })}
+        </div>
       </main>
     </div>
   );

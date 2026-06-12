@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   Swords, Home, PlusSquare, User as UserIcon, LogIn, Globe,
-  BarChart3, Bell, BellDot, FileText, LayoutList
+  Bell, BellDot
 } from "lucide-react";
 import { useNotifications } from "../hooks/useFirestore";
 import { notificationsDb } from "../lib/db";
@@ -53,7 +53,7 @@ function NotificationBell() {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-10 w-72 bg-card border rounded-2xl shadow-2xl z-50 overflow-hidden">
             <div className="p-3 border-b flex items-center justify-between">
-              <span className="font-bold text-sm">Bildirimler</span>
+              <span className="font-bold text-sm">Notifications</span>
               {notifications.length > 0 && (
                 <button
                   className="text-xs text-primary hover:underline"
@@ -64,13 +64,13 @@ function NotificationBell() {
                     }
                   }}
                 >
-                  Tümünü oku
+                  Mark all read
                 </button>
               )}
             </div>
             <div className="max-h-72 overflow-y-auto">
               {notifications.length === 0 ? (
-                <p className="text-center text-muted-foreground text-sm py-8">Bildirim yok</p>
+                <p className="text-center text-muted-foreground text-sm py-8">No notifications</p>
               ) : (
                 notifications.map(n => (
                   <div key={n.id} className={`px-4 py-3 border-b last:border-0 text-sm ${n.read ? "opacity-60" : "bg-primary/5"}`}>
@@ -93,33 +93,25 @@ export function Header() {
   const [location] = useLocation();
 
   const desktopNavLinks = [
-    { href: "/", label: t("nav_tests") },
+    { href: "/tests", label: t("nav_tests") },
     { href: "/duels", label: t("nav_duels") },
-    { href: "/tierlist", label: t("nav_tierlist_pl") },
+    { href: "/tierlist", label: t("nav_tierlist") },
     { href: "/universes", label: t("nav_universes") },
   ];
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
 
-  const mobileNav = [
-    { href: "/", icon: FileText, label: t("nav_tests") },
-    { href: "/duels", icon: Swords, label: t("nav_duels") },
-    { href: "/tierlist", icon: LayoutList, label: t("nav_tierlist_pl") },
-    { href: "/universes", icon: Globe, label: t("nav_universes") },
-    { href: "/create", icon: PlusSquare, label: t("nav_create") },
-  ];
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 items-center mx-auto px-4 justify-between">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary hover:opacity-80 transition-opacity shrink-0">
-          <Swords className="h-5 w-5" />
-          <span className="hidden sm:block">CharComp</span>
+      <div className="container flex h-16 items-center mx-auto px-4 justify-between">
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary hover:opacity-80 transition-opacity">
+          <Swords className="h-6 w-6" />
+          <span>CharComp</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-5">
-          {desktopNavLinks.map(link => (
+          {desktopNavLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -132,80 +124,91 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <LanguageSwitcher />
           <NotificationBell />
 
           <Link href="/create" className="hidden sm:inline-flex">
-            <Button variant="default" size="sm" className="gap-1.5">
-              <PlusSquare size={15} />
+            <Button variant="default" size="sm" className="gap-2">
+              <PlusSquare size={16} />
               {t("nav_create")}
             </Button>
           </Link>
 
           {user ? (
-            <Link href="/profile" className="flex items-center">
-              <Avatar className="h-8 w-8 cursor-pointer border-2 border-transparent hover:border-primary transition-all">
+            <Link href="/profile" className="flex items-center gap-2">
+              <Avatar className="h-8 w-8 cursor-pointer border hover:border-primary transition-all">
                 <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="text-xs"><UserIcon size={13} /></AvatarFallback>
+                <AvatarFallback><UserIcon size={14} /></AvatarFallback>
               </Avatar>
             </Link>
           ) : (
             <Link href="/login">
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <LogIn size={15} />
-                <span className="hidden sm:block">{t("auth_login")}</span>
+              <Button variant="ghost" size="sm" className="gap-2">
+                <LogIn size={16} />
+                {t("auth_login")}
               </Button>
             </Link>
           )}
         </div>
       </div>
 
-      {/* Mobile Bottom Nav — 6 items: 5 links + profile avatar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur flex justify-around items-center z-50 h-14 px-1">
-        {mobileNav.map(({ href, icon: Icon, label }) => {
-          const active = isActive(href);
-          const isCreate = href === "/create";
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${
-                active ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              {isCreate ? (
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                  <Icon size={16} className="text-primary-foreground" />
-                </div>
-              ) : (
-                <Icon size={17} />
-              )}
-              <span className="text-[9px] font-medium leading-none">{label}</span>
-            </Link>
-          );
-        })}
-
-        {/* Profile avatar as 6th item */}
+      {/* Mobile Bottom Nav — 4 items + profile avatar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex justify-around items-center z-50 h-16">
+        {/* Home */}
         <Link
-          href="/profile"
-          className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${
-            isActive("/profile") ? "text-primary" : "text-muted-foreground"
-          }`}
+          href="/"
+          className={`flex flex-col items-center gap-0.5 px-3 py-2 ${isActive("/") && location === "/" ? "text-primary" : "text-muted-foreground"}`}
         >
-          {user ? (
-            <Avatar className={`h-7 w-7 border-2 transition-all ${isActive("/profile") ? "border-primary" : "border-transparent"}`}>
-              <AvatarImage src={user.avatar} alt={user.name} />
-              <AvatarFallback className="text-[10px]"><UserIcon size={11} /></AvatarFallback>
-            </Avatar>
-          ) : (
-            <div className={`h-7 w-7 rounded-full border-2 flex items-center justify-center ${isActive("/profile") ? "border-primary bg-primary/10" : "border-muted-foreground/30"}`}>
-              <UserIcon size={13} className={isActive("/profile") ? "text-primary" : "text-muted-foreground"} />
-            </div>
-          )}
-          <span className="text-[9px] font-medium leading-none">{t("nav_profile")}</span>
+          <Home size={20} />
+          <span className="text-[10px] font-medium">{t("nav_home")}</span>
         </Link>
-      </nav>
+
+        {/* Universes */}
+        <Link
+          href="/universes"
+          className={`flex flex-col items-center gap-0.5 px-3 py-2 ${isActive("/universes") ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <Globe size={20} />
+          <span className="text-[10px] font-medium">{t("nav_universes")}</span>
+        </Link>
+
+        {/* Create — prominent center button */}
+        <Link href="/create">
+          <div className="flex flex-col items-center gap-0.5 -mt-4">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors ${
+              isActive("/create") ? "bg-primary/90" : "bg-primary"
+            }`}>
+              <PlusSquare size={22} className="text-primary-foreground" />
+            </div>
+            <span className={`text-[10px] font-medium mt-0.5 ${isActive("/create") ? "text-primary" : "text-muted-foreground"}`}>
+              {t("nav_create")}
+            </span>
+          </div>
+        </Link>
+
+        {/* Profile / Login */}
+        {user ? (
+          <Link
+            href="/profile"
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 ${isActive("/profile") ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <Avatar className={`h-6 w-6 border-2 transition-colors ${isActive("/profile") ? "border-primary" : "border-transparent"}`}>
+              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarFallback className="text-[10px]"><UserIcon size={12} /></AvatarFallback>
+            </Avatar>
+            <span className="text-[10px] font-medium">{t("nav_profile")}</span>
+          </Link>
+        ) : (
+          <Link
+            href="/login"
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 ${isActive("/login") ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <UserIcon size={20} />
+            <span className="text-[10px] font-medium">{t("auth_login")}</span>
+          </Link>
+        )}
+      </div>
     </header>
   );
 }
