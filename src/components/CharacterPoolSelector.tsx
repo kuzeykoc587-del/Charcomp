@@ -1,283 +1,304 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { Search, X, Plus, Loader2 } from "lucide-react";
+import { Search, X, Plus, Loader2, ChevronRight } from "lucide-react";
 import { useTranslation } from "../contexts/LanguageContext";
 import { CreateCharacterModal } from "./CreateCharacterModal";
-import { useCharacters, useUniverses, useCharactersByIds } from "../hooks/useFirestore";
-import type { Character } from "../lib/db";
+import { useCharacters, useCharactersByIds, useUniverses } from "../hooks/useFirestore";
 import { useQueryClient } from "@tanstack/react-query";
+import type { Character } from "../lib/db";
 
 interface CharacterPoolSelectorProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }
 
-const FALLBACK = (name: string) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=400&bold=true`;
+function CharCard({
+  char,
+  universeName,
+  onAdd,
+  onRemove,
+  inPool,
+}: {
+  char: Character;
+  universeName?: string;
+  onAdd?: () => void;
+  onRemove?: () => void;
+  inPool?: boolean;
+}) {
+  return (
+    <div
+      onClick={inPool ? undefined : onAdd}
+      className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
+        inPool
+          ? "bg-card border-primary/30 bg-primary/5"
+          : "cursor-pointer hover:border-primary/50 hover:bg-muted/60 active:scale-[0.98]"
+      }`}
+    >
+      <img
+        src={char.image}
+        alt={char.name}
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(char.name)}&background=7C3AED&color=fff&size=80&bold=true`;
+        }}
+        className="w-9 h-9 rounded-lg object-cover shrink-0 border"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold truncate leading-tight">{char.name}</p>
+        {universeName && (
+          <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">{universeName}</p>
+        )}
+      </div>
+      {inPool ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
+          className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
+        >
+          <X size={13} />
+        </button>
+      ) : (
+        <Plus size={13} className="text-primary shrink-0 opacity-60" />
+      )}
+    </div>
+  );
+}
 
 export function CharacterPoolSelector({ selectedIds, onChange }: CharacterPoolSelectorProps) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-
   const [searchTerm, setSearchTerm] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [activeUniverse, setActiveUniverse] = useState<string | null>(null);
+  const [activeUniverseId, setActiveUniverseId] = useState<string | null>(null);
 
-  // Local cache: id → full Character object.
-  // This is the sole source of truth for the pool panel.
-  // Characters are stored the moment they are clicked — instant and persistent
-  // across universe/search mode switches.
-  const [charCache, setCharCache] = useState<Map<string, Character>>(new Map());
-
-  // ── Firestore queries ──────────────────────────────────────────────────────
-
+  // Always load universes (small collection)
   const { data: allUniverses = [], isLoading: loadingUniverses } = useUniverses();
 
-  const { data: browseChars = [], isLoading: loadingBrowse } = useCharacters(
-    activeUniverse ? { seriesId: activeUniverse } : undefined
+  // Universe name map for quick lookups
+  const universeNameMap = useMemo(
+    () => Object.fromEntries(allUniverses.map((u) => [u.id, u.name])),
+    [allUniverses]
   );
 
+  // Load characters only when a universe is selected
+  const { data: universeChars = [], isLoading: loadingUniverse } = useCharacters(
+    activeUniverseId ? { seriesId: activeUniverseId } : undefined
+  );
+
+  // Load characters only when search is active (≥2 chars)
   const { data: searchResults = [], isLoading: loadingSearch } = useCharacters(
     searchTerm.length >= 2 ? { search: searchTerm } : undefined
   );
 
-  // Hydrate cache for selectedIds not yet stored locally
-  // (covers pre-existing IDs when editing a test, and newly created characters).
-  const idsNotCached = selectedIds.filter((id) => !charCache.has(id));
-  const { data: hydratedChars = [] } = useCharactersByIds(idsNotCached);
+  // Load selected characters by ID (for pool panel - never fetches all)
+  const { data: poolChars = [], isLoading: loadingPool } = useCharactersByIds(selectedIds);
 
-  useEffect(() => {
-    if (hydratedChars.length === 0) return;
-    setCharCache((prev) => {
-      const next = new Map(prev);
-      hydratedChars.forEach((c) => next.set(c.id, c));
-      return next;
-    });
-  }, [hydratedChars]);
-
-  // ── Universe name lookup ───────────────────────────────────────────────────
-
-  const universeMap = new Map(allUniverses.map((u) => [u.id, u.name]));
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
-
-  const addChar = (char: Character) => {
-    if (selectedIds.includes(char.id)) return;
-    setCharCache((prev) => new Map(prev).set(char.id, char));
-    onChange([...selectedIds, char.id]);
+  const addChar = (id: string) => {
+    if (!selectedIds.includes(id)) onChange([...selectedIds, id]);
   };
 
-  const removeChar = (id: string) => {
-    setCharCache((prev) => {
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-    onChange(selectedIds.filter((s) => s !== id));
+  const removeChar = (id: string) => onChange(selectedIds.filter((s) => s !== id));
+
+  const addAll = () => {
+    const toAdd = universeChars.map((c) => c.id);
+    onChange(Array.from(new Set([...selectedIds, ...toAdd])));
   };
 
-  // ── Derived display lists ──────────────────────────────────────────────────
+  // Determine what to display in the browse panel
+  const isSearchMode = searchTerm.length >= 2;
+  const browseChars = isSearchMode
+    ? searchResults
+    : activeUniverseId
+    ? universeChars
+    : [];
 
-  // Pool: ordered by insertion order (selectedIds order), resolved from cache.
-  const poolChars = selectedIds
-    .map((id) => charCache.get(id))
-    .filter((c): c is Character => Boolean(c));
+  const unselectedBrowse = browseChars.filter((c) => !selectedIds.includes(c.id));
+  const loading = isSearchMode ? loadingSearch : loadingUniverse;
 
-  // Browse panel: exclude already-selected characters.
-  const displayChars =
-    searchTerm.length >= 2
-      ? searchResults.filter((c) => !selectedIds.includes(c.id))
-      : browseChars.filter((c) => !selectedIds.includes(c.id));
-
-  const isSearching = searchTerm.length >= 2;
-
-  // ── Shared card renderer ───────────────────────────────────────────────────
-
-  function CharCard({ char }: { char: Character }) {
-    return (
-      <button
-        onClick={() => addChar(char)}
-        className="flex items-center gap-2 p-2 rounded-lg border hover:border-primary hover:bg-muted text-left transition-colors w-full"
-      >
-        <img
-          src={char.image}
-          alt={char.name}
-          onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK(char.name); }}
-          className="w-9 h-9 rounded-md object-cover shrink-0"
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate leading-tight">{char.name}</p>
-          <p className="text-[11px] text-muted-foreground truncate leading-tight">
-            {universeMap.get(char.seriesId) ?? char.seriesId}
-          </p>
-        </div>
-        <Plus className="w-4 h-4 text-primary shrink-0" />
-      </button>
-    );
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const activeUniverseName = activeUniverseId ? universeNameMap[activeUniverseId] : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-wide">
+        {t("lbl_character_pool")}
+      </h3>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* ── Left: Browse / Search ─────────────────────────────────────── */}
-        <div className="space-y-4">
+        {/* ── Left: Browse panel ─────────────────────────────────── */}
+        <div className="space-y-3">
 
-          {/* Search input */}
+          {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={t("ph_search_characters")}
-              className="pl-9"
+              className="pl-9 h-9"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
-                if (e.target.value) setActiveUniverse(null);
+                if (e.target.value.length >= 2) setActiveUniverseId(null);
               }}
             />
           </div>
 
-          {/* Search results */}
-          {isSearching ? (
+          {/* Universe pills */}
+          {!isSearchMode && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Search Results</h4>
-              {loadingSearch ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="animate-spin" size={14} /> Searching...
-                </div>
-              ) : displayChars.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No characters found.</p>
-              ) : (
-                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-                  {displayChars.map((char) => (
-                    <CharCard key={char.id} char={char} />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Universe browser */
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">Browse by Universe</h4>
-
+              <p className="text-xs text-muted-foreground font-medium">Browse by Universe</p>
               {loadingUniverses ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="animate-spin" size={14} /> Loading...
+                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                  <Loader2 className="animate-spin" size={12} /> Loading...
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                   {allUniverses.map((u) => (
                     <button
                       key={u.id}
-                      onClick={() => setActiveUniverse(activeUniverse === u.id ? null : u.id)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                        activeUniverse === u.id
+                      onClick={() => setActiveUniverseId(activeUniverseId === u.id ? null : u.id)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                        activeUniverseId === u.id
                           ? "bg-primary text-primary-foreground border-primary"
-                          : "hover:border-primary"
+                          : "border-border hover:border-primary/50 bg-muted/40"
                       }`}
                     >
+                      <img
+                        src={u.coverImage}
+                        alt={u.name}
+                        className="w-4 h-4 rounded-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
                       {u.name}
                     </button>
                   ))}
                 </div>
               )}
-
-              {activeUniverse && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-muted-foreground">
-                    {universeMap.get(activeUniverse)}
-                  </h4>
-
-                  {loadingBrowse ? (
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                      <Loader2 className="animate-spin" size={14} /> Loading...
-                    </div>
-                  ) : displayChars.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      All characters from this universe are already in the pool.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
-                      {displayChars.map((char) => (
-                        <CharCard key={char.id} char={char} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
+          {/* Characters list */}
+          <div>
+            {/* Header row when universe or search active */}
+            {(isSearchMode || activeUniverseId) && (
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-muted-foreground font-medium">
+                  {isSearchMode ? `Results for "${searchTerm}"` : activeUniverseName}
+                </p>
+                {activeUniverseId && !isSearchMode && browseChars.length > 0 && (
+                  <button
+                    onClick={addAll}
+                    className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={11} /> Add all ({browseChars.length})
+                  </button>
+                )}
+              </div>
+            )}
+
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-xs py-4 justify-center">
+                <Loader2 className="animate-spin" size={14} /> Loading characters...
+              </div>
+            ) : !isSearchMode && !activeUniverseId ? (
+              <div className="text-center py-8 border-2 border-dashed rounded-xl">
+                <p className="text-xs text-muted-foreground">Select a universe above to browse characters</p>
+              </div>
+            ) : unselectedBrowse.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-xs text-muted-foreground">
+                  {browseChars.length > 0 ? "All characters from this universe are in your pool!" : "No characters found."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-1.5 max-h-64 overflow-y-auto pr-1">
+                {unselectedBrowse.slice(0, 30).map((char) => (
+                  <CharCard
+                    key={char.id}
+                    char={char}
+                    universeName={universeNameMap[char.seriesId]}
+                    onAdd={() => addChar(char.id)}
+                  />
+                ))}
+                {unselectedBrowse.length > 30 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    +{unselectedBrowse.length - 30} more — refine your search
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <Button
             variant="outline"
-            className="w-full gap-2"
+            size="sm"
+            className="w-full gap-2 text-xs h-8"
             onClick={() => setCreateModalOpen(true)}
           >
-            <Plus size={16} /> {t("btn_add_character")}
+            <Plus size={13} /> {t("btn_add_character")}
           </Button>
         </div>
 
-        {/* ── Right: Selected Pool ───────────────────────────────────────── */}
-        <div className="border rounded-xl p-4 bg-muted/30 flex flex-col h-[500px]">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b">
-            <h3 className="font-bold">{t("lbl_character_pool")}</h3>
-            <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-1 rounded-full">
+        {/* ── Right: Pool panel ──────────────────────────────────── */}
+        <div className="border rounded-2xl bg-muted/20 flex flex-col" style={{ minHeight: 280 }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <h4 className="font-bold text-sm">{t("lbl_character_pool")}</h4>
+            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+              selectedIds.length >= 2
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground"
+            }`}>
               {selectedIds.length}
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
-            {poolChars.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-sm text-center px-4">
-                Empty pool — tap a character on the left to add it.
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            {loadingPool ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="animate-spin text-primary" size={18} />
+              </div>
+            ) : poolChars.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full py-8 text-center gap-2">
+                <ChevronRight size={24} className="text-muted-foreground/40 rotate-180" />
+                <p className="text-xs text-muted-foreground">
+                  Pool is empty.<br />Select a universe and click characters to add them.
+                </p>
               </div>
             ) : (
               poolChars.map((char) => (
-                <div
+                <CharCard
                   key={char.id}
-                  className="flex items-center gap-3 p-2 bg-card border rounded-lg shadow-sm"
-                >
-                  <img
-                    src={char.image}
-                    alt={char.name}
-                    onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK(char.name); }}
-                    className="w-10 h-10 rounded-md object-cover shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate leading-tight">{char.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate leading-tight">
-                      {universeMap.get(char.seriesId) ?? char.seriesId}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                    onClick={() => removeChar(char.id)}
-                  >
-                    <X size={16} />
-                  </Button>
-                </div>
+                  char={char}
+                  universeName={universeNameMap[char.seriesId]}
+                  onRemove={() => removeChar(char.id)}
+                  inPool
+                />
               ))
             )}
           </div>
+
+          {selectedIds.length > 0 && (
+            <div className="px-4 py-2 border-t">
+              <button
+                onClick={() => onChange([])}
+                className="text-xs text-destructive/70 hover:text-destructive transition-colors font-medium"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {selectedIds.length > 0 && selectedIds.length < 2 && (
+        <p className="text-xs text-amber-500 font-medium">⚠ Need at least 2 characters</p>
+      )}
 
       <CreateCharacterModal
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={(id) => {
-          // Character was just created — add its ID to the pool.
-          // The useCharactersByIds hydration hook will resolve the full object
-          // and populate charCache automatically via the useEffect above.
-          if (!selectedIds.includes(id)) {
-            onChange([...selectedIds, id]);
-          }
+          addChar(id);
           qc.invalidateQueries({ queryKey: ["characters"] });
+          setCreateModalOpen(false);
         }}
       />
     </div>

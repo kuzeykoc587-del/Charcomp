@@ -5,7 +5,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
-  Swords, Home, PlusSquare, Plus, User as UserIcon, LogIn,
+  Swords, Home, Plus, User as UserIcon, LogIn,
   Bell, BellDot
 } from "lucide-react";
 import { useNotifications } from "../hooks/useFirestore";
@@ -95,7 +95,8 @@ export function Header() {
   const desktopNavLinks = [
     { href: "/tests", label: t("nav_tests") },
     { href: "/duels", label: t("nav_duels") },
-    { href: "/tierlist", label: t("nav_tierlist") },
+    { href: "/tierlists", label: t("lbl_tierlists") },
+    { href: "/this-or-that", label: t("lbl_this_or_that") },
     { href: "/universes", label: t("nav_universes") },
   ];
 
@@ -103,120 +104,109 @@ export function Header() {
     href === "/" ? location === "/" : location.startsWith(href);
 
   return (
-    <>
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center mx-auto px-4 justify-between">
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary hover:opacity-80 transition-opacity">
-            <Swords className="h-6 w-6" />
-            <span>CharComp</span>
-          </Link>
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-16 items-center mx-auto px-4 justify-between">
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary hover:opacity-80 transition-opacity">
+          <Swords className="h-6 w-6" />
+          <span>CharComp</span>
+        </Link>
 
-          <nav className="hidden md:flex items-center gap-5">
-            {desktopNavLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive(link.href) ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <LanguageSwitcher />
-            <NotificationBell />
-
-            <Link href="/create" className="hidden sm:inline-flex">
-              <Button variant="default" size="sm" className="gap-2">
-                <PlusSquare size={16} />
-                {t("nav_create")}
-              </Button>
-            </Link>
-
-            {user ? (
-              <Link href="/profile" className="flex items-center gap-2">
-                <Avatar className="h-8 w-8 cursor-pointer border hover:border-primary transition-all">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="text-xs font-semibold">
-                    {user.name?.charAt(0).toUpperCase() ?? <UserIcon size={14} />}
-                  </AvatarFallback>
-                </Avatar>
-              </Link>
-            ) : (
-              <Link href="/login">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <LogIn size={16} />
-                  {t("auth_login")}
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Mobile Bottom Nav — 3 items: Create | Home | Profile */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16">
-        <div className="grid grid-cols-3 h-full items-center px-6">
-
-          {/* LEFT: Create — small filled rounded-square */}
-          <div className="flex justify-start">
-            <Link href="/create">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-                  isActive("/create") ? "bg-primary/85" : "bg-primary"
-                }`}
-              >
-                <Plus size={20} className="text-primary-foreground" strokeWidth={2.5} />
-              </div>
-            </Link>
-          </div>
-
-          {/* CENTER: Home — larger icon, always centered */}
-          <div className="flex justify-center">
+        <nav className="hidden md:flex items-center gap-5">
+          {desktopNavLinks.map((link) => (
             <Link
-              href="/"
-              className={`flex flex-col items-center gap-0.5 transition-colors ${
-                location === "/" ? "text-primary" : "text-muted-foreground"
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium transition-colors hover:text-primary ${
+                isActive(link.href) ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Home size={26} />
-              <span className="text-[10px] font-semibold">{t("nav_home")}</span>
+              {link.label}
             </Link>
-          </div>
+          ))}
+        </nav>
 
-          {/* RIGHT: Profile avatar */}
-          <div className="flex justify-end">
-            {user ? (
-              <Link href="/profile">
-                <Avatar
-                  className={`h-9 w-9 border-2 transition-colors cursor-pointer ${
-                    isActive("/profile") ? "border-primary" : "border-transparent"
-                  }`}
-                >
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="text-sm font-semibold">
-                    {user.name?.charAt(0).toUpperCase() ?? <UserIcon size={14} />}
-                  </AvatarFallback>
-                </Avatar>
-              </Link>
-            ) : (
-              <Link href="/login">
-                <div
-                  className={`h-9 w-9 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    isActive("/login") ? "border-primary text-primary" : "border-muted text-muted-foreground"
-                  }`}
-                >
-                  <UserIcon size={18} />
-                </div>
-              </Link>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <NotificationBell />
 
+          <Link href="/create" className="hidden sm:inline-flex">
+            <Button variant="default" size="sm" className="gap-2">
+              <Plus size={16} />
+              {t("nav_create")}
+            </Button>
+          </Link>
+
+          {user ? (
+            <Link href="/profile" className="flex items-center gap-2">
+              <Avatar className="h-8 w-8 cursor-pointer border hover:border-primary transition-all">
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="text-xs font-bold">
+                  {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon size={14} />}
+                </AvatarFallback>
+              </Avatar>
+            </Link>
+          ) : (
+            <Link href="/login">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <LogIn size={16} />
+                {t("auth_login")}
+              </Button>
+            </Link>
+          )}
         </div>
+      </div>
+
+      {/* ── Mobile Bottom Nav — 3 items: Create | Home | Profile ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16 flex items-center justify-between px-8">
+
+        {/* Create — left, small rounded-square */}
+        <Link href="/create">
+          <div className={`flex flex-col items-center gap-0.5 ${isActive("/create") ? "text-primary" : "text-muted-foreground"}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isActive("/create") ? "bg-primary" : "bg-foreground/10"
+            }`}>
+              <Plus size={20} className={isActive("/create") ? "text-primary-foreground" : "text-foreground"} />
+            </div>
+            <span className="text-[10px] font-medium">{t("nav_create")}</span>
+          </div>
+        </Link>
+
+        {/* Home — center, slightly larger */}
+        <Link href="/">
+          <div className={`flex flex-col items-center gap-0.5 ${location === "/" ? "text-primary" : "text-muted-foreground"}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
+              location === "/" ? "bg-primary/15" : "hover:bg-muted"
+            }`}>
+              <Home size={22} className={location === "/" ? "text-primary" : ""} />
+            </div>
+            <span className="text-[10px] font-medium">{t("nav_home")}</span>
+          </div>
+        </Link>
+
+        {/* Profile — right, avatar circle */}
+        {user ? (
+          <Link href="/profile">
+            <div className={`flex flex-col items-center gap-0.5 ${isActive("/profile") ? "text-primary" : "text-muted-foreground"}`}>
+              <Avatar className={`h-10 w-10 border-2 transition-colors ${isActive("/profile") ? "border-primary" : "border-transparent"}`}>
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="text-sm font-black">
+                  {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon size={14} />}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-[10px] font-medium">{t("nav_profile")}</span>
+            </div>
+          </Link>
+        ) : (
+          <Link href="/login">
+            <div className={`flex flex-col items-center gap-0.5 ${isActive("/login") ? "text-primary" : "text-muted-foreground"}`}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-foreground/10">
+                <UserIcon size={20} />
+              </div>
+              <span className="text-[10px] font-medium">{t("auth_login")}</span>
+            </div>
+          </Link>
+        )}
       </nav>
-    </>
+    </header>
   );
 }

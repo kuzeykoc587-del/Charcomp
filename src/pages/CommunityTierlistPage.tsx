@@ -77,7 +77,7 @@ function CharacterTierCard({ char }: { char: Character }) {
               <span className="text-xs text-muted-foreground">{t("lbl_unranked")}</span>
             )}
             {voteCount > 0 && (
-              <span className="text-xs text-muted-foreground">{voteCount} votes · avg {(char.tierAverage ?? 0).toFixed(1)}</span>
+              <span className="text-xs text-muted-foreground">{voteCount} {t("lbl_votes")} · avg {(char.tierAverage ?? 0).toFixed(1)}</span>
             )}
           </div>
         </div>
@@ -110,7 +110,7 @@ function CharacterTierCard({ char }: { char: Character }) {
   );
 }
 
-export default function TierlistPage() {
+export default function CommunityTierlistPage() {
   const { t } = useTranslation();
   const { data: characters = [], isLoading } = useCharacters();
   const [selectedTier, setSelectedTier] = useState<TierVote["tier"] | "all">("all");
@@ -138,10 +138,7 @@ export default function TierlistPage() {
 
   const allCharsForVoting = useMemo(() => {
     if (selectedTier === "all") return characters;
-    if (selectedTier) {
-      return characters.filter(c => avgToTier(c.tierAverage ?? 0) === selectedTier || (!c.tierCount));
-    }
-    return characters;
+    return characters.filter(c => avgToTier(c.tierAverage ?? 0) === selectedTier || (!c.tierCount));
   }, [characters, selectedTier]);
 
   return (
@@ -153,7 +150,6 @@ export default function TierlistPage() {
           <h1 className="text-3xl font-black">{t("lbl_community_tierlist")}</h1>
         </div>
 
-        {/* Community Tier Board */}
         <div className="mb-8 border rounded-2xl overflow-hidden bg-card">
           <div className="p-4 border-b">
             <h2 className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Community Results</h2>
@@ -188,14 +184,12 @@ export default function TierlistPage() {
                 </div>
               ))}
               <div className="flex items-start gap-4 p-3 bg-muted/20">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xs font-black border-2 border-border text-muted-foreground shrink-0">
-                  ?
-                </div>
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xs font-black border-2 border-border text-muted-foreground shrink-0">?</div>
                 <div className="flex flex-wrap gap-2 flex-1 min-h-[48px] items-center">
                   {grouped.unranked.length === 0 ? (
                     <span className="text-xs text-muted-foreground italic">All characters rated!</span>
                   ) : (
-                    grouped.unranked.map(char => (
+                    grouped.unranked.slice(0, 30).map(char => (
                       <div key={char.id} className="flex items-center gap-1.5 bg-background/60 rounded-lg px-2 py-1 border opacity-60">
                         <img
                           src={char.image}
@@ -207,13 +201,15 @@ export default function TierlistPage() {
                       </div>
                     ))
                   )}
+                  {grouped.unranked.length > 30 && (
+                    <span className="text-xs text-muted-foreground">+{grouped.unranked.length - 30} more</span>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Rate Characters */}
         <div>
           <h2 className="text-xl font-black mb-4">Rate Characters</h2>
           {isLoading ? (
@@ -222,7 +218,7 @@ export default function TierlistPage() {
             <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-2xl">{t("empty_tierlist")}</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {characters.map(char => (
+              {allCharsForVoting.slice(0, 50).map(char => (
                 <CharacterTierCard key={char.id} char={char} />
               ))}
             </div>

@@ -12,6 +12,9 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import HomePage from "./pages/HomePage";
 import TestsPage from "./pages/TestsPage";
 import CreatePage from "./pages/CreatePage";
+import TestCreatePage from "./pages/TestCreatePage";
+import DuelCreatePage from "./pages/DuelCreatePage";
+import UniverseCreatePage from "./pages/UniverseCreatePage";
 import TestDetailPage from "./pages/TestDetailPage";
 import TournamentPage from "./pages/TournamentPage";
 import RankingPage from "./pages/RankingPage";
@@ -25,7 +28,16 @@ import UniversesPage from "./pages/UniversesPage";
 import UniverseDetailPage from "./pages/UniverseDetailPage";
 import AdminPage from "./pages/AdminPage";
 import GlobalRankingPage from "./pages/GlobalRankingPage";
-import TierlistPage from "./pages/TierlistPage";
+import CommunityTierlistPage from "./pages/CommunityTierlistPage";
+import TierListsPage from "./pages/TierListsPage";
+import TierListCreatePage from "./pages/TierListCreatePage";
+import TierListDetailPage from "./pages/TierListDetailPage";
+import TierListPlayPage from "./pages/TierListPlayPage";
+import TierListResultPage from "./pages/TierListResultPage";
+import ThisOrThatPage from "./pages/ThisOrThatPage";
+import ThisOrThatDetailPage from "./pages/ThisOrThatDetailPage";
+import ThisOrThatCreatePage from "./pages/ThisOrThatCreatePage";
+import GuessThePage from "./pages/GuessThePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,12 +55,39 @@ function Router() {
       <Route path="/" component={HomePage} />
       <Route path="/tests" component={TestsPage} />
       <Route path="/duels" component={DuelsPage} />
-      <Route path="/tierlist" component={TierlistPage} />
       <Route path="/universes" component={UniversesPage} />
       <Route path="/universe/:id" component={UniverseDetailPage} />
-      <Route path="/create" component={CreatePage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/login" component={LoginPage} />
+
+      {/* ── Create Hub + sub-routes ─────────────────────────────── */}
+      <Route path="/create" component={CreatePage} />
+      <Route path="/create/test" component={TestCreatePage} />
+      <Route path="/create/duel" component={DuelCreatePage} />
+      <Route path="/create/tierlist" component={TierListCreatePage} />
+      <Route path="/create/this-or-that" component={ThisOrThatCreatePage} />
+      <Route path="/create/universe" component={UniverseCreatePage} />
+
+      {/* ── Tier Lists (new system) ─────────────────────────────── */}
+      <Route path="/tierlists" component={TierListsPage} />
+      <Route path="/tierlist/create">{() => <Redirect to="/create/tierlist" />}</Route>
+      <Route path="/tierlist/:id/play" component={TierListPlayPage} />
+      <Route path="/tierlist/:id/result" component={TierListResultPage} />
+      <Route path="/tierlist/:id" component={TierListDetailPage} />
+
+      {/* Old /tierlist → browse page */}
+      <Route path="/tierlist">{() => <Redirect to="/tierlists" />}</Route>
+
+      {/* Community tier voting (old system kept) */}
+      <Route path="/community-tierlist" component={CommunityTierlistPage} />
+
+      {/* ── This or That ───────────────────────────────────────── */}
+      <Route path="/this-or-that" component={ThisOrThatPage} />
+      <Route path="/this-or-that/create">{() => <Redirect to="/create/this-or-that" />}</Route>
+      <Route path="/this-or-that/:id" component={ThisOrThatDetailPage} />
+
+      {/* ── Guess The ──────────────────────────────────────────── */}
+      <Route path="/guess-the" component={GuessThePage} />
 
       {/* ── Test play routes ───────────────────────────────────── */}
       <Route path="/test/:id" component={TestDetailPage} />
@@ -63,9 +102,7 @@ function Router() {
       <Route path="/admin" component={AdminPage} />
 
       {/* ── Backward-compat redirects ──────────────────────────── */}
-      {/* /explore was the old tests browse page */}
       <Route path="/explore">{() => <Redirect to="/tests" />}</Route>
-      {/* /search had its own page; now search lives inside each section */}
       <Route path="/search">{() => <Redirect to="/tests" />}</Route>
 
       <Route component={NotFound} />
@@ -100,8 +137,8 @@ function AppShell() {
           <h2 className="font-bold text-lg">Firebase connection issue</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
             The app could not connect to Firebase Auth. This usually means the
-            environment variables are missing in Vercel, or your domain is not
-            listed in Firebase → Authentication → Authorized Domains.
+            environment variables are missing or your domain is not listed in
+            Firebase → Authentication → Authorized Domains.
           </p>
           <pre className="w-full bg-muted text-destructive text-xs rounded-lg p-3 text-left overflow-x-auto whitespace-pre-wrap break-words">
             {authError}

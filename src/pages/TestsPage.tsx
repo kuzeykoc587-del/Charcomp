@@ -11,6 +11,7 @@ import { Loader2, Search } from "lucide-react";
 type SortFilter = "popular" | "new" | "trending" | "favorites" | "mine" | "recent";
 
 const CATEGORIES = ["All", "Anime", "TV Series", "Movie", "Game", "Comic", "Book", "Other"];
+const PAGE_SIZE = 20;
 
 export default function TestsPage() {
   const { t } = useTranslation();
@@ -18,6 +19,7 @@ export default function TestsPage() {
   const [sort, setSort] = useState<SortFilter>("popular");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
   const { data: allTests = [], isLoading } = useTests({
     sort: (sort === "favorites" || sort === "mine" || sort === "recent") ? "popular" : sort,
@@ -50,6 +52,9 @@ export default function TestsPage() {
     return list;
   })();
 
+  const visible = filteredTests.slice(0, displayCount);
+  const hasMore = filteredTests.length > displayCount;
+
   const sortFilters: { key: SortFilter; label: string; requiresAuth?: boolean }[] = [
     { key: "popular", label: t("filter_popular") },
     { key: "new", label: t("filter_new") },
@@ -64,14 +69,14 @@ export default function TestsPage() {
       <Header />
       <main className="flex-1 container mx-auto px-4 py-6 max-w-6xl">
 
-        <div className="mb-6 space-y-4">
+        <div className="mb-6 space-y-3">
           <div className="relative max-w-md">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-9 rounded-full bg-muted/50 border-transparent focus:border-primary focus:bg-background"
-              placeholder={`${t("nav_search")} ${t("home_category_tests").toLowerCase()}...`}
+              placeholder={`Search tests...`}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setDisplayCount(PAGE_SIZE); }}
             />
           </div>
 
@@ -84,7 +89,7 @@ export default function TestsPage() {
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted hover:bg-muted/80 text-muted-foreground"
                 }`}
-                onClick={() => setCategory(cat)}
+                onClick={() => { setCategory(cat); setDisplayCount(PAGE_SIZE); }}
               >
                 {cat === "All" ? t("lbl_all_categories") : cat === "Book" ? t("cat_book") : cat}
               </button>
@@ -99,7 +104,7 @@ export default function TestsPage() {
                   key={key}
                   variant={sort === key ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSort(key)}
+                  onClick={() => { setSort(key); setDisplayCount(PAGE_SIZE); }}
                   className="rounded-full shrink-0"
                 >
                   {label}
@@ -118,11 +123,20 @@ export default function TestsPage() {
             <p className="text-muted-foreground">{t("empty_tests")}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {filteredTests.map((test) => (
-              <TestCard key={test.id} test={test} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {visible.map((test) => (
+                <TestCard key={test.id} test={test} />
+              ))}
+            </div>
+            {hasMore && (
+              <div className="flex justify-center mt-8">
+                <Button variant="outline" onClick={() => setDisplayCount((n) => n + PAGE_SIZE)}>
+                  {t("btn_load_more")}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

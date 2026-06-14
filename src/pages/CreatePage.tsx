@@ -1,30 +1,72 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
-import { CharacterPoolSelector } from "../components/CharacterPoolSelector";
-import { ImageUpload } from "../components/ImageUpload";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { Label } from "../components/ui/label";
-import { useToast } from "../hooks/use-toast";
-import { testsDb } from "../lib/db";
-import { Loader2 } from "lucide-react";
+import {
+  FlaskConical, Swords, LayoutList, Shuffle, Globe, HelpCircle, ArrowRight
+} from "lucide-react";
+import { Link } from "wouter";
+
+interface CreateOption {
+  icon: React.ReactNode;
+  titleKey: string;
+  descKey: string;
+  href: string;
+  color: string;
+  comingSoon?: boolean;
+}
+
+const OPTIONS: CreateOption[] = [
+  {
+    icon: <FlaskConical size={26} />,
+    titleKey: "lbl_create_test",
+    descKey: "home_tests_desc",
+    href: "/create/test",
+    color: "text-violet-400",
+  },
+  {
+    icon: <Swords size={26} />,
+    titleKey: "lbl_create_duel",
+    descKey: "home_duels_desc",
+    href: "/create/duel",
+    color: "text-rose-400",
+  },
+  {
+    icon: <LayoutList size={26} />,
+    titleKey: "btn_create_tierlist",
+    descKey: "home_tierlists_desc",
+    href: "/create/tierlist",
+    color: "text-amber-400",
+  },
+  {
+    icon: <Shuffle size={26} />,
+    titleKey: "btn_create_this_or_that",
+    descKey: "home_thisorthat_desc",
+    href: "/create/this-or-that",
+    color: "text-sky-400",
+  },
+  {
+    icon: <Globe size={26} />,
+    titleKey: "lbl_create_universe",
+    descKey: "home_universes_desc",
+    href: "/create/universe",
+    color: "text-emerald-400",
+  },
+  {
+    icon: <HelpCircle size={26} />,
+    titleKey: "lbl_guess_the",
+    descKey: "home_guess_the_desc",
+    href: "/guess-the",
+    color: "text-green-400",
+    comingSoon: true,
+  },
+];
 
 export default function CreatePage() {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
-
-  const [step, setStep] = useState(1);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [coverImage, setCoverImage] = useState("");
-  const [pool, setPool] = useState<string[]>([]);
-  const [publishing, setPublishing] = useState(false);
 
   if (!user) {
     return (
@@ -33,7 +75,7 @@ export default function CreatePage() {
         <main className="flex-1 flex items-center justify-center p-4">
           <div className="bg-card p-8 rounded-2xl border shadow-lg text-center max-w-sm w-full">
             <h2 className="text-2xl font-black mb-4">Login Required</h2>
-            <p className="text-muted-foreground mb-8">You need to log in to create your own tests.</p>
+            <p className="text-muted-foreground mb-8">You need to log in to create content.</p>
             <Button className="w-full" onClick={() => setLocation("/login")}>Go to Login</Button>
           </div>
         </main>
@@ -41,107 +83,52 @@ export default function CreatePage() {
     );
   }
 
-  const handlePublish = async () => {
-    if (!title || pool.length < 2) {
-      toast({ title: "Error", description: "Title and at least 2 characters required", variant: "destructive" });
-      return;
-    }
-    setPublishing(true);
-    try {
-      const id = await testsDb.create({
-        title,
-        description,
-        coverImage: coverImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=7C3AED&color=fff&size=400&bold=true`,
-        creatorId: user.id,
-        language,
-        characterIds: pool,
-      });
-      toast({ title: "Success", description: t("msg_publish_success") });
-      setLocation(`/test/${id}`);
-    } catch {
-      toast({ title: "Error", description: "Failed to publish test", variant: "destructive" });
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   return (
     <div className="min-h-[100dvh] flex flex-col bg-muted/20 pb-20 md:pb-0">
       <Header />
-      <main className="flex-1 container mx-auto px-4 py-8 max-w-4xl">
-
-        <div className="flex justify-between items-center mb-12 relative">
-          <div className="absolute top-1/2 left-0 right-0 h-1 bg-border -z-10" />
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex flex-col items-center gap-2 bg-background p-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${step >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground border-2 border-border"}`}>
-                {s}
-              </div>
-              <span className="text-xs font-medium hidden sm:block">
-                {s === 1 ? t("lbl_step_1") : s === 2 ? t("lbl_step_2") : t("lbl_step_3")}
-              </span>
-            </div>
-          ))}
+      <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-black">{t("nav_create")}</h1>
+          <p className="text-muted-foreground mt-1">{t("lbl_choose_what_to_create")}</p>
         </div>
 
-        <div className="bg-card border rounded-2xl p-6 md:p-8 shadow-sm">
-          {step === 1 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="title">{t("ph_test_title")}</Label>
-                    <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Best Shonen Hero" className="text-lg py-6" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="desc">{t("ph_test_desc")}</Label>
-                    <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your test..." rows={4} />
-                  </div>
+        <div className="space-y-3">
+          {OPTIONS.map((opt) => {
+            const card = (
+              <div
+                className={`flex items-center gap-4 rounded-2xl border bg-card p-5 transition-all ${
+                  opt.comingSoon
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:border-primary/40 hover:shadow-md cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-muted/50 ${opt.color}`}>
+                  {opt.icon}
                 </div>
-                <div className="space-y-2">
-                  <Label>Cover Image</Label>
-                  <ImageUpload value={coverImage} onChange={setCoverImage} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-base">{t(opt.titleKey as any)}</p>
+                  <p className="text-sm text-muted-foreground">{t(opt.descKey as any)}</p>
                 </div>
+                {opt.comingSoon ? (
+                  <span className="text-xs font-bold px-2 py-1 rounded-full bg-muted text-muted-foreground border shrink-0">
+                    {t("home_coming_soon")}
+                  </span>
+                ) : (
+                  <ArrowRight size={18} className="text-muted-foreground shrink-0" />
+                )}
               </div>
-              <div className="flex justify-end pt-4">
-                <Button onClick={() => setStep(2)} disabled={!title}>{t("btn_next")}</Button>
-              </div>
-            </div>
-          )}
+            );
 
-          {step === 2 && (
-            <div className="space-y-6 animate-in fade-in">
-              <CharacterPoolSelector selectedIds={pool} onChange={setPool} />
-              <div className="flex justify-between pt-4">
-                <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-                <Button onClick={() => setStep(3)} disabled={pool.length < 2}>{t("btn_next")}</Button>
-              </div>
-            </div>
-          )}
+            if (opt.comingSoon) {
+              return <div key={opt.href}>{card}</div>;
+            }
 
-          {step === 3 && (
-            <div className="space-y-8 animate-in fade-in">
-              <div className="flex flex-col md:flex-row gap-8 items-start">
-                <div className="w-full md:w-1/3 aspect-square rounded-xl overflow-hidden bg-muted border">
-                  <img src={coverImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=7C3AED&color=fff&size=400&bold=true`} alt="Cover" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 space-y-4">
-                  <h2 className="text-3xl font-black">{title}</h2>
-                  <p className="text-muted-foreground">{description || "No description provided."}</p>
-                  <div className="inline-flex bg-primary/10 text-primary px-3 py-1 rounded-full font-bold text-sm">
-                    {pool.length} Characters in Pool
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-                <Button size="lg" className="px-8 gap-2" onClick={handlePublish} disabled={publishing}>
-                  {publishing && <Loader2 size={16} className="animate-spin" />}
-                  {t("btn_publish")}
-                </Button>
-              </div>
-            </div>
-          )}
+            return (
+              <Link key={opt.href} href={opt.href}>
+                {card}
+              </Link>
+            );
+          })}
         </div>
       </main>
     </div>

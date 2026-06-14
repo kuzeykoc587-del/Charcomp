@@ -2,7 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, universesDb, charactersDb, duelsDb,
   likesDb, favoritesDb, recentlyPlayedDb, tierVotesDb, notificationsDb,
-  type Test, type Universe, type Character, type Duel, type FavoriteItem, type TierVote, type Notification
+  thisOrThatDb, tierListsDb, tierListResultsDb,
+  type Test, type Universe, type Character, type Duel, type FavoriteItem,
+  type TierVote, type Notification, type ThisOrThat, type TierList, type TierListResult
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -215,3 +217,65 @@ export const useRecentlyPlayedTests = (allTests: Test[]) => {
     .map((id) => allTests.find((t) => t.id === id))
     .filter((t): t is Test => Boolean(t));
 };
+
+// ── This or That ──────────────────────────────────────────────────────────────
+
+export const useThisOrThats = (lim = 30) =>
+  useQuery<ThisOrThat[]>({
+    queryKey: ["this-or-that", lim],
+    queryFn: () => thisOrThatDb.getAll(lim),
+    staleTime: 30_000,
+  });
+
+export const useThisOrThat = (id: string | undefined) =>
+  useQuery<ThisOrThat | null>({
+    queryKey: ["this-or-that-item", id],
+    queryFn: () => (id ? thisOrThatDb.getById(id) : null),
+    enabled: Boolean(id),
+  });
+
+export const useThisOrThatsByCreator = (creatorId: string | undefined) =>
+  useQuery<ThisOrThat[]>({
+    queryKey: ["this-or-that-by-creator", creatorId],
+    queryFn: () => (creatorId ? thisOrThatDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
+// ── Tier Lists ────────────────────────────────────────────────────────────────
+
+export const useTierLists = (lim = 30) =>
+  useQuery<TierList[]>({
+    queryKey: ["tierlists", lim],
+    queryFn: () => tierListsDb.getAll(lim),
+    staleTime: 30_000,
+  });
+
+export const useTierList = (id: string | undefined) =>
+  useQuery<TierList | null>({
+    queryKey: ["tierlist", id],
+    queryFn: () => (id ? tierListsDb.getById(id) : null),
+    enabled: Boolean(id),
+  });
+
+export const useTierListsByCreator = (creatorId: string | undefined) =>
+  useQuery<TierList[]>({
+    queryKey: ["tierlists-by-creator", creatorId],
+    queryFn: () => (creatorId ? tierListsDb.getByCreator(creatorId) : []),
+    enabled: Boolean(creatorId),
+  });
+
+export const useUserTierListResult = (tierListId: string | undefined, userId: string | undefined) =>
+  useQuery<TierListResult | null>({
+    queryKey: ["tierlist-result", tierListId, userId],
+    queryFn: () => (tierListId && userId ? tierListResultsDb.getUserResult(tierListId, userId) : null),
+    enabled: Boolean(tierListId && userId),
+    staleTime: 60_000,
+  });
+
+export const useCommunityTierListResults = (tierListId: string | undefined) =>
+  useQuery<TierListResult[]>({
+    queryKey: ["tierlist-community", tierListId],
+    queryFn: () => (tierListId ? tierListResultsDb.getCommunityResults(tierListId) : []),
+    enabled: Boolean(tierListId),
+    staleTime: 30_000,
+  });

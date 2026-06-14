@@ -699,3 +699,172 @@ export const duplicateCheck = {
     }
   },
 };
+
+// ── This or That ──────────────────────────────────────────────────────────────
+
+export interface ThisOrThat {
+  id: string;
+  title: string;
+  description?: string;
+  optionA: string;
+  optionB: string;
+  imageA?: string;
+  imageB?: string;
+  category?: string;
+  creatorId: string;
+  createdAt: string;
+  votesA: number;
+  votesB: number;
+  isSeedContent?: boolean;
+  deleted?: boolean;
+}
+
+const TOT_VOTED_KEY = "charcomp_tot_voted";
+
+export const totVoteTracker = {
+  hasVoted: (id: string): boolean => {
+    try {
+      const v: string[] = JSON.parse(localStorage.getItem(TOT_VOTED_KEY) || "[]");
+      return v.includes(id);
+    } catch { return false; }
+  },
+  markVoted: (id: string): void => {
+    try {
+      const v: string[] = JSON.parse(localStorage.getItem(TOT_VOTED_KEY) || "[]");
+      if (!v.includes(id)) { v.push(id); localStorage.setItem(TOT_VOTED_KEY, JSON.stringify(v)); }
+    } catch { /* ignore */ }
+  },
+};
+
+export const thisOrThatDb = {
+  getAll: async (lim = 30): Promise<ThisOrThat[]> => {
+    const q = query(collection(firestore, "thisOrThat"), orderBy("createdAt", "desc"), limit(lim));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<ThisOrThat>(d)).filter(p => !p.deleted);
+  },
+
+  getById: async (id: string): Promise<ThisOrThat | null> => {
+    const snap = await getDoc(doc(firestore, "thisOrThat", id));
+    if (!snap.exists()) return null;
+    const p = { id: snap.id, ...snap.data() } as ThisOrThat;
+    return p.deleted ? null : p;
+  },
+
+  getByCreator: async (creatorId: string): Promise<ThisOrThat[]> => {
+    const q = query(collection(firestore, "thisOrThat"), where("creatorId", "==", creatorId), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<ThisOrThat>(d)).filter(p => !p.deleted);
+  },
+
+  create: async (data: Omit<ThisOrThat, "id" | "createdAt" | "votesA" | "votesB">): Promise<string> => {
+    const ref = await addDoc(collection(firestore, "thisOrThat"), {
+      ...data, votesA: 0, votesB: 0, createdAt: ts(),
+    });
+    return ref.id;
+  },
+
+  vote: async (id: string, side: "A" | "B"): Promise<void> => {
+    const field = side === "A" ? "votesA" : "votesB";
+    await updateDoc(doc(firestore, "thisOrThat", id), { [field]: increment(1) });
+  },
+
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "thisOrThat", id), { deleted: true, deletedAt: ts(), deletedBy });
+  },
+};
+
+// ── Tier Lists (new creation-based system) ────────────────────────────────────
+
+export interface TierListRow {
+  name: string;
+  color: string;
+}
+
+export interface TierList {
+  id: string;
+  title: string;
+  description: string;
+  tiers: TierListRow[];
+  characterIds: string[];
+  creatorId: string;
+  createdAt: string;
+  playCount: number;
+  isSeedContent?: boolean;
+  deleted?: boolean;
+}
+
+export interface TierListResult {
+  id: string;
+  tierListId: string;
+  userId: string;
+  placements: Record<string, string>;
+  submittedAt: string;
+}
+
+export const DEFAULT_TIERS: TierListRow[] = [
+  { name: "S", color: "#f59e0b" },
+  { name: "A", color: "#f97316" },
+  { name: "B", color: "#3b82f6" },
+  { name: "C", color: "#22c55e" },
+  { name: "D", color: "#94a3b8" },
+];
+
+export const tierListsDb = {
+  getAll: async (lim = 30): Promise<TierList[]> => {
+    const q = query(collection(firestore, "tierlists"), orderBy("createdAt", "desc"), limit(lim));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<TierList>(d)).filter(tl => !tl.deleted);
+  },
+
+  getById: async (id: string): Promise<TierList | null> => {
+    const snap = await getDoc(doc(firestore, "tierlists", id));
+    if (!snap.exists()) return null;
+    const tl = { id: snap.id, ...snap.data() } as TierList;
+    return tl.deleted ? null : tl;
+  },
+
+  getByCreator: async (creatorId: string): Promise<TierList[]> => {
+    const q = query(collection(firestore, "tierlists"), where("creatorId", "==", creatorId), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<TierList>(d)).filter(tl => !tl.deleted);
+  },
+
+  create: async (data: Omit<TierList, "id" | "createdAt" | "playCount">): Promise<string> => {
+    const ref = await addDoc(collection(firestore, "tierlists"), {
+      ...data, playCount: 0, createdAt: ts(),
+    });
+    return ref.id;
+  },
+
+  update: async (id: string, data: Partial<Omit<TierList, "id">>): Promise<void> => {
+    await updateDoc(doc(firestore, "tierlists", id), data);
+  },
+
+  softDelete: async (id: string, deletedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tierlists", id), { deleted: true, deletedAt: ts(), deletedBy });
+  },
+
+  incrementPlayCount: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tierlists", id), { playCount: increment(1) });
+  },
+};
+
+export const tierListResultsDb = {
+  submit: async (data: Omit<TierListResult, "id">): Promise<string> => {
+    const docId = `${data.tierListId}_${data.userId}`;
+    await setDoc(doc(firestore, "tierlistResults", docId), { ...data, submittedAt: ts() }, { merge: false });
+    await tierListsDb.incrementPlayCount(data.tierListId);
+    return docId;
+  },
+
+  getUserResult: async (tierListId: string, userId: string): Promise<TierListResult | null> => {
+    const snap = await getDoc(doc(firestore, "tierlistResults", `${tierListId}_${userId}`));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as TierListResult) : null;
+  },
+
+  getCommunityResults: async (tierListId: string): Promise<TierListResult[]> => {
+    const q = query(collection(firestore, "tierlistResults"), where("tierListId", "==", tierListId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<TierListResult>(d));
+  },
+};
