@@ -17,7 +17,6 @@ export function ThisOrThatCard({ poll }: ThisOrThatCardProps) {
         <span className="sr-only">View poll</span>
       </Link>
 
-      {/* Cover: split A/B */}
       <div className="relative aspect-square w-full overflow-hidden flex">
         {/* A side */}
         <div className="flex-1 relative bg-blue-500/15 flex flex-col items-center justify-center px-2">
@@ -36,7 +35,7 @@ export function ThisOrThatCard({ poll }: ThisOrThatCardProps) {
           </div>
         </div>
 
-        {/* Divider + VS */}
+        {/* VS divider */}
         <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex items-center z-10">
           <div className="w-7 h-7 rounded-full bg-background border-2 border-border flex items-center justify-center">
             <span className="text-[8px] font-black text-muted-foreground">VS</span>
@@ -60,7 +59,7 @@ export function ThisOrThatCard({ poll }: ThisOrThatCardProps) {
           </div>
         </div>
 
-        {/* Vote bar overlay at bottom */}
+        {/* Vote bar */}
         {total > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 flex">
             <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctA}%` }} />
@@ -78,7 +77,9 @@ export function ThisOrThatCard({ poll }: ThisOrThatCardProps) {
           {poll.title || `${poll.optionA} vs ${poll.optionB}`}
         </h3>
         <div className="mt-auto flex items-center justify-between pt-2 border-t border-border/50">
-          <span className="text-xs text-muted-foreground">{total.toLocaleString()} votes</span>
+          <span className="text-xs text-muted-foreground">
+            {total > 0 ? `${total.toLocaleString()} votes` : "Yeni"}
+          </span>
           {total > 0 && (
             <span className="text-xs font-bold text-sky-400">{pctA}% / {pctB}%</span>
           )}

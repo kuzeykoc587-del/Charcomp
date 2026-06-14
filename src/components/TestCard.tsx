@@ -9,8 +9,6 @@ interface TestCardProps {
 }
 
 export function TestCard({ test }: TestCardProps) {
-  const previewCount = Math.min(test.characterIds.length, 4);
-
   return (
     <div className="group relative flex flex-col rounded-xl bg-card border border-border overflow-hidden transition-all hover:shadow-lg hover:border-primary/50">
       <Link href={`/test/${test.id}`} className="absolute inset-0 z-10">
@@ -23,7 +21,10 @@ export function TestCard({ test }: TestCardProps) {
           alt={test.title}
           className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
-          onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(test.title)}&background=7C3AED&color=fff&size=400&bold=true`; }}
+          onError={(e) => {
+            const img = e.target as HTMLImageElement;
+            img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(test.title)}&background=7C3AED&color=fff&size=400&bold=true`;
+          }}
         />
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent" />
         <div className="absolute top-2 right-2 z-20">
@@ -33,18 +34,21 @@ export function TestCard({ test }: TestCardProps) {
         </div>
       </div>
 
-      <div className="p-4 flex flex-col flex-1">
-        <h3 className="font-bold text-base leading-tight mb-4 line-clamp-2 min-h-[2.5rem]">{test.title}</h3>
+      <div className="p-3 flex flex-col flex-1">
+        <h3 className="font-bold text-sm leading-tight mb-3 line-clamp-2 min-h-[2.5rem]">{test.title}</h3>
 
-        <div className="mt-auto flex items-center justify-between z-20 relative pt-3 border-t border-border/50">
+        <div className="mt-auto flex items-center justify-between z-20 relative pt-2 border-t border-border/50">
           <div className="flex items-center gap-1">
             <LikeButton testId={test.id} initialCount={test.likeCount} />
             <FavoriteButton testId={test.id} initialCount={test.favoriteCount} />
           </div>
 
-          <Link href={`/test/${test.id}`} className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors bg-primary/10 px-2 py-1 rounded-md z-20 relative">
+          <Link
+            href={`/test/${test.id}`}
+            className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors bg-primary/10 px-2 py-1 rounded-md z-20 relative"
+          >
             <Play size={12} className="fill-current" />
-            {test.playCount.toLocaleString()}
+            {test.playCount > 0 ? test.playCount.toLocaleString() : "Yeni"}
           </Link>
         </div>
       </div>

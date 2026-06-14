@@ -343,8 +343,9 @@ export const testsDb = {
 // ── Duels ─────────────────────────────────────────────────────────────────────
 
 export const duelsDb = {
-  getAll: async (): Promise<Duel[]> => {
-    const snap = await getDocs(collection(firestore, "duels"));
+  getAll: async (lim = 100): Promise<Duel[]> => {
+    const q = query(collection(firestore, "duels"), orderBy("createdAt", "desc"), limit(lim));
+    const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<Duel>(d)).filter(d => !d.deleted);
   },
 

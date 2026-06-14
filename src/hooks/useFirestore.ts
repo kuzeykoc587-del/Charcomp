@@ -94,10 +94,10 @@ export const useGlobalRanking = () =>
 
 // ── Duels ─────────────────────────────────────────────────────────────────────
 
-export const useDuels = () =>
+export const useDuels = (lim = 100) =>
   useQuery<Duel[]>({
-    queryKey: ["duels"],
-    queryFn: () => duelsDb.getAll(),
+    queryKey: ["duels", lim],
+    queryFn: () => duelsDb.getAll(lim),
     staleTime: 30_000,
   });
 
