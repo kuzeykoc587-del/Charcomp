@@ -44,7 +44,7 @@ export default function UniversesPage() {
   const filtered = universes.filter((u) =>
     !search || u.name.toLowerCase().includes(search.toLowerCase())
   );
-  const visible = filtered.slice(0, displayCount);
+  const visible = (filtered || []).slice(0, displayCount);
   const hasMore = filtered.length > displayCount;
 
   return (

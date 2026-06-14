@@ -47,7 +47,7 @@ export default function TestDetailPage() {
     );
   }
 
-  const previewChars = poolChars.slice(0, 12);
+  const previewChars = (poolChars || []).slice(0, 12);
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">

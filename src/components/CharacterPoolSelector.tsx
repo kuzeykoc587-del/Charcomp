@@ -210,7 +210,7 @@ export function CharacterPoolSelector({ selectedIds, onChange }: CharacterPoolSe
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-1.5 max-h-64 overflow-y-auto pr-1">
-                {unselectedBrowse.slice(0, 30).map((char) => (
+                {(unselectedBrowse || []).slice(0, 30).map((char) => (
                   <CharCard
                     key={char.id}
                     char={char}

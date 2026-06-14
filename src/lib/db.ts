@@ -672,10 +672,10 @@ export const searchDb = {
       d.title?.toLowerCase().includes(s) || d.description?.toLowerCase().includes(s)
     );
     return {
-      universes: universes.slice(0, 5),
-      characters: characters.slice(0, 5),
-      tests: tests.slice(0, 5),
-      duels: filteredDuels.slice(0, 5),
+      universes: (universes || []).slice(0, 5),
+      characters: (characters || []).slice(0, 5),
+      tests: (tests || []).slice(0, 5),
+      duels: (filteredDuels || []).slice(0, 5),
     };
   },
 };

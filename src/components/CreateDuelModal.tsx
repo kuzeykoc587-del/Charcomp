@@ -29,8 +29,8 @@ export function CreateDuelModal({ open, onClose, onCreated }: CreateDuelModalPro
   const { data: resultsA = [] } = useCharacters(searchA.length >= 2 ? { search: searchA } : undefined);
   const { data: resultsB = [] } = useCharacters(searchB.length >= 2 ? { search: searchB } : undefined);
 
-  const filteredA = resultsA.filter((c) => c.id !== charB?.id).slice(0, 6);
-  const filteredB = resultsB.filter((c) => c.id !== charA?.id).slice(0, 6);
+  const filteredA = (resultsA || []).filter((c) => c.id !== charB?.id).slice(0, 6);
+  const filteredB = (resultsB || []).filter((c) => c.id !== charA?.id).slice(0, 6);
 
   const handleCreate = async () => {
     if (!charA || !charB || !user) return;

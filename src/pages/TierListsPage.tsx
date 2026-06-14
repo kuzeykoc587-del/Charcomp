@@ -22,7 +22,7 @@ export default function TierListsPage() {
   const filtered = tierLists.filter((tl) =>
     !search || tl.title.toLowerCase().includes(search.toLowerCase())
   );
-  const visible = filtered.slice(0, displayCount);
+  const visible = (filtered || []).slice(0, displayCount);
   const hasMore = filtered.length > displayCount;
 
   return (

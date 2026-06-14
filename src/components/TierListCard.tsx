@@ -17,7 +17,7 @@ export function TierListCard({ tl }: TierListCardProps) {
       <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-amber-500/20 to-yellow-600/10 flex flex-col items-center justify-center gap-2 px-2">
         <LayoutList size={24} className="text-amber-400/60 absolute top-2 right-2" />
         <div className="flex flex-wrap gap-1 justify-center">
-          {tl.tiers.slice(0, 5).map((tier) => (
+          {(tl.tiers || []).slice(0, 5).map((tier) => (
             <span
               key={tier.name}
               className="text-sm font-black px-2 py-1 rounded-lg border"
@@ -30,7 +30,7 @@ export function TierListCard({ tl }: TierListCardProps) {
               {tier.name}
             </span>
           ))}
-          {tl.tiers.length > 5 && (
+          {(tl.tiers || []).length > 5 && (
             <span className="text-xs font-bold px-2 py-1 rounded-lg bg-muted text-muted-foreground">
               +{tl.tiers.length - 5}
             </span>
@@ -45,7 +45,7 @@ export function TierListCard({ tl }: TierListCardProps) {
           <span className="text-xs text-muted-foreground flex items-center gap-1">
             <Users size={11} /> {tl.playCount}
           </span>
-          <span className="text-xs font-bold text-amber-500">{tl.tiers.length} tiers</span>
+          <span className="text-xs font-bold text-amber-500">{(tl.tiers || []).length} tiers</span>
         </div>
       </div>
     </div>

@@ -52,7 +52,7 @@ export default function TestsPage() {
     return list;
   })();
 
-  const visible = filteredTests.slice(0, displayCount);
+  const visible = (filteredTests || []).slice(0, displayCount);
   const hasMore = filteredTests.length > displayCount;
 
   const sortFilters: { key: SortFilter; label: string; requiresAuth?: boolean }[] = [

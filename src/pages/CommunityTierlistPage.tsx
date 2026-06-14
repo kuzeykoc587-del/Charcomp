@@ -189,7 +189,7 @@ export default function CommunityTierlistPage() {
                   {grouped.unranked.length === 0 ? (
                     <span className="text-xs text-muted-foreground italic">All characters rated!</span>
                   ) : (
-                    grouped.unranked.slice(0, 30).map(char => (
+                    (grouped.unranked || []).slice(0, 30).map(char => (
                       <div key={char.id} className="flex items-center gap-1.5 bg-background/60 rounded-lg px-2 py-1 border opacity-60">
                         <img
                           src={char.image}
@@ -201,7 +201,7 @@ export default function CommunityTierlistPage() {
                       </div>
                     ))
                   )}
-                  {grouped.unranked.length > 30 && (
+                  {(grouped.unranked || []).length > 30 && (
                     <span className="text-xs text-muted-foreground">+{grouped.unranked.length - 30} more</span>
                   )}
                 </div>
@@ -218,7 +218,7 @@ export default function CommunityTierlistPage() {
             <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-2xl">{t("empty_tierlist")}</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {allCharsForVoting.slice(0, 50).map(char => (
+              {(allCharsForVoting || []).slice(0, 50).map(char => (
                 <CharacterTierCard key={char.id} char={char} />
               ))}
             </div>

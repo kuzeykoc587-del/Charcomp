@@ -123,8 +123,8 @@ export default function HomePage() {
   const { data: polls = [] } = useThisOrThats(4);
   const { data: tierLists = [] } = useTierLists(4);
 
-  const previewTests = tests.slice(0, 4);
-  const previewUniverses = universes.slice(0, 4);
+  const previewTests = (tests || []).slice(0, 4);
+  const previewUniverses = (universes || []).slice(0, 4);
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
@@ -217,7 +217,7 @@ export default function HomePage() {
                   <div className="border rounded-xl bg-card hover:border-primary/40 transition-all p-3 cursor-pointer">
                     <p className="font-bold text-sm truncate">{tl.title}</p>
                     <div className="flex gap-1 mt-1.5 flex-wrap">
-                      {tl.tiers.slice(0, 5).map((tier) => (
+                      {(tl.tiers || []).slice(0, 5).map((tier) => (
                         <span key={tier.name} className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ color: tier.color, backgroundColor: `${tier.color}22` }}>
                           {tier.name}
                         </span>
@@ -234,7 +234,7 @@ export default function HomePage() {
           <div>
             <SectionHeader title={t("lbl_this_or_that")} href="/this-or-that" seeAll={t("home_see_all")} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {polls.slice(0, 2).map((poll) => (
+              {(polls || []).slice(0, 2).map((poll) => (
                 <Link key={poll.id} href={`/this-or-that/${poll.id}`}>
                   <div className="border rounded-xl bg-card hover:border-primary/40 transition-all p-3 cursor-pointer">
                     <p className="text-xs text-muted-foreground mb-2 truncate">{poll.title || t("lbl_this_or_that")}</p>
