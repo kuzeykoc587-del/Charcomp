@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Header } from "../components/Header";
 import { TestCard } from "../components/TestCard";
 import { Button } from "../components/ui/button";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, ShieldCheck } from "lucide-react";
 import {
   useTestsByCreator, useUserFavorites, useTests,
   useUniversesByCreator, useCharactersByCreator, useDuelsByCreator,
@@ -19,7 +19,7 @@ import { useToast } from "../hooks/use-toast";
 type Tab = "created" | "universes" | "characters" | "duels" | "favorites" | "tier-votes";
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, roleInfo } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -115,7 +115,15 @@ export default function ProfilePage() {
               <div><strong className="text-secondary text-lg">{favoriteTests.length}</strong> Favorites</div>
             </div>
           </div>
-          <div>
+          <div className="flex flex-col gap-2 items-end">
+            {roleInfo?.canModerate && (
+              <Link href="/admin">
+                <Button variant="outline" size="sm" className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10">
+                  <ShieldCheck size={14} />
+                  Admin Panel
+                </Button>
+              </Link>
+            )}
             <Button variant="outline" onClick={() => { logout(); setLocation("/"); }}>Logout</Button>
           </div>
         </div>

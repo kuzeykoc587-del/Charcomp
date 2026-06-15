@@ -86,6 +86,9 @@ export interface Test {
   rejectedAt?: string;
   hiddenBy?: string;
   hiddenAt?: string;
+  category?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface Duel {
@@ -337,6 +340,15 @@ export const testsDb = {
       .map(d => fromDoc<Test>(d))
       .filter(t => !t.deleted && (t.status === "pending" || t.moderationStatus === "flagged" || t.moderationStatus === "needs_review"))
       .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0));
+  },
+
+  getByStatus: async (status: NonNullable<Test["status"]>): Promise<Test[]> => {
+    const snap = await getDocs(collection(firestore, "tests"));
+    return snap.docs
+      .map(d => fromDoc<Test>(d))
+      .filter(t => !t.deleted && t.status === status)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 100);
   },
 
   countCreatedToday: async (creatorId: string): Promise<number> => {

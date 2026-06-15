@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { ImageUpload } from "../components/ImageUpload";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { useAuth } from "../contexts/AuthContext";
 import { seedDatabase, isSeedNeeded } from "../lib/seed";
 import { useTranslation } from "../contexts/LanguageContext";
@@ -8,24 +11,35 @@ import { Link } from "wouter";
 import {
   LogIn, Loader2, CheckCircle2, Database, ShieldCheck, ShieldX,
   Eye, EyeOff, Ban, CheckCheck, AlertTriangle, Flag, Users,
-  Copy, Check
+  Copy, Check, Pencil, Trash2
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { testsDb, reportsDb, type Test, type Report } from "../lib/db";
 
-function usePendingTests() {
+function useTestsByStatus(status: NonNullable<Test["status"]>, enabled: boolean) {
+  return useQuery<Test[]>({
+    queryKey: ["admin-tests-status", status],
+    queryFn: () => testsDb.getByStatus(status),
+    staleTime: 0,
+    enabled,
+  });
+}
+
+function usePendingTests(enabled: boolean) {
   return useQuery<Test[]>({
     queryKey: ["admin-pending-tests"],
     queryFn: () => testsDb.getPending(),
     staleTime: 0,
+    enabled,
   });
 }
 
-function useOpenReports() {
+function useOpenReports(enabled: boolean) {
   return useQuery<Report[]>({
     queryKey: ["admin-open-reports"],
     queryFn: () => reportsDb.getOpen(),
     staleTime: 0,
+    enabled,
   });
 }
 
@@ -49,9 +63,125 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PendingTestCard({ test, onAction }: { test: Test; onAction: () => void }) {
+function TestEditModal({ test, onClose, onSaved }: { test: Test; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth();
+  const [title, setTitle] = useState(test.title);
+  const [description, setDescription] = useState(test.description);
+  const [coverImage, setCoverImage] = useState(test.coverImage);
+  const [category, setCategory] = useState(test.category ?? "");
+  const [status, setStatus] = useState<NonNullable<Test["status"]>>(test.status ?? "published");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!user || !title.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await testsDb.update(test.id, {
+        title: title.trim(),
+        description: description.trim(),
+        coverImage,
+        category: category.trim() || undefined,
+        status,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.id,
+      });
+      onSaved();
+      onClose();
+    } catch {
+      setError("Kayıt başarısız. Lütfen tekrar dene.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 overflow-y-auto bg-black/40" onClick={onClose}>
+      <div
+        className="relative bg-card border rounded-2xl shadow-2xl w-full max-w-lg my-4 z-10"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-5">
+          <h3 className="font-bold text-base mb-4 flex items-center gap-2">
+            <Pencil size={16} /> Testi Düzenle
+          </h3>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Başlık *</label>
+              <Input value={title} onChange={e => setTitle(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Açıklama</label>
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                rows={3}
+                className="w-full text-sm bg-muted border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Kapak Görseli</label>
+              <ImageUpload value={coverImage} onChange={setCoverImage} shape="square" />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Kategori</label>
+              <Input
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                placeholder="Anime, Film, Oyun, Dizi..."
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Durum</label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as NonNullable<Test["status"]>)}
+                className="w-full text-sm bg-muted border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="published">Yayınlanan</option>
+                <option value="pending">Bekleyen</option>
+                <option value="hidden">Gizli</option>
+                <option value="rejected">Reddedilen</option>
+              </select>
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-destructive mt-3">{error}</p>}
+
+          <div className="flex gap-2 mt-5">
+            <Button onClick={save} disabled={saving || !title.trim()} className="flex-1 gap-1.5">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />}
+              Kaydet
+            </Button>
+            <Button variant="outline" onClick={onClose} disabled={saving}>İptal</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ContentTab = "pending" | "reports" | "hidden" | "rejected" | "published";
+
+function AdminTestCard({
+  test,
+  tab,
+  onAction,
+}: {
+  test: Test;
+  tab: ContentTab;
+  onAction: () => void;
+}) {
   const { user } = useAuth();
   const [loading, setLoading] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const moderate = async (action: "approve" | "reject" | "hide") => {
     if (!user) return;
@@ -66,58 +196,156 @@ function PendingTestCard({ test, onAction }: { test: Test; onAction: () => void 
     }
   };
 
+  const permanentDelete = async () => {
+    setLoading("delete");
+    try {
+      await testsDb.delete(test.id);
+      onAction();
+    } catch {
+      /* silent */
+    } finally {
+      setLoading(null);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
-    <div className="bg-card border rounded-xl overflow-hidden">
-      <div className="flex gap-3 p-4">
-        <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted shrink-0">
-          <img
-            src={test.coverImage}
-            alt={test.title}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(test.title)}&background=7C3AED&color=fff&size=100&bold=true`;
-            }}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-bold text-sm leading-tight line-clamp-1">{test.title}</h3>
-            <div className="flex gap-1 shrink-0">
-              <StatusBadge status={test.status ?? "published"} />
-              <RiskBadge score={test.riskScore ?? 0} />
+    <>
+      {editing && (
+        <TestEditModal
+          test={test}
+          onClose={() => setEditing(false)}
+          onSaved={onAction}
+        />
+      )}
+      <ConfirmModal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={permanentDelete}
+        title="Testi Kalıcı Olarak Sil"
+        description="Bu testi veritabanından kalıcı olarak silmek istediğinden emin misin? Bu işlem geri alınamaz."
+      />
+
+      <div className="bg-card border rounded-xl overflow-hidden">
+        <div className="flex gap-3 p-4">
+          <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted shrink-0">
+            <img
+              src={test.coverImage}
+              alt={test.title}
+              className="w-full h-full object-cover"
+              onError={e => {
+                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(test.title)}&background=7C3AED&color=fff&size=100&bold=true`;
+              }}
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h3 className="font-bold text-sm leading-tight line-clamp-1">{test.title}</h3>
+              <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                <StatusBadge status={test.status ?? "published"} />
+                {test.riskScore !== undefined && test.riskScore > 0 && (
+                  <RiskBadge score={test.riskScore} />
+                )}
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground line-clamp-1 mb-1">{test.description || "—"}</p>
+            <div className="flex flex-wrap gap-1 mb-1">
+              {test.category && (
+                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">{test.category}</span>
+              )}
+              {(test.riskReasons ?? []).slice(0, 3).map(r => (
+                <span key={r} className="text-[9px] bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">{r}</span>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              {test.creatorId.slice(0, 12)}… · {test.createdAt ? new Date(test.createdAt).toLocaleDateString("tr-TR") : "—"}
+              {test.updatedBy && " · düzenlendi"}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground line-clamp-1 mb-1">{test.description || "—"}</p>
-          <div className="flex flex-wrap gap-1 mb-2">
-            {(test.riskReasons ?? []).map(r => (
-              <span key={r} className="text-[9px] bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">{r}</span>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            Creator: {test.creatorId.slice(0, 12)}… · {test.createdAt ? new Date(test.createdAt).toLocaleDateString("tr-TR") : "—"}
-          </p>
+        </div>
+
+        <div className="border-t p-3 flex gap-2 flex-wrap">
+          {(tab === "hidden" || tab === "rejected") && (
+            <Button
+              size="sm"
+              className="gap-1 h-7 text-xs bg-green-600 hover:bg-green-700"
+              onClick={() => moderate("approve")}
+              disabled={loading !== null}
+            >
+              {loading === "approve" ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
+              Yayınla
+            </Button>
+          )}
+
+          {tab === "pending" && (
+            <Button
+              size="sm"
+              className="gap-1 h-7 text-xs bg-green-600 hover:bg-green-700"
+              onClick={() => moderate("approve")}
+              disabled={loading !== null}
+            >
+              {loading === "approve" ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
+              Onayla
+            </Button>
+          )}
+
+          {tab !== "rejected" && (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1 h-7 text-xs"
+              onClick={() => moderate("reject")}
+              disabled={loading !== null}
+            >
+              {loading === "reject" ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+              Reddet
+            </Button>
+          )}
+
+          {tab !== "hidden" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 h-7 text-xs"
+              onClick={() => moderate("hide")}
+              disabled={loading !== null}
+            >
+              {loading === "hide" ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
+              Gizle
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 h-7 text-xs"
+            onClick={() => setEditing(true)}
+            disabled={loading !== null}
+          >
+            <Pencil size={12} /> Düzenle
+          </Button>
+
+          <Link href={`/test/${test.id}`}>
+            <Button size="sm" variant="ghost" className="gap-1 h-7 text-xs">
+              <Eye size={12} /> Görüntüle
+            </Button>
+          </Link>
+
+          {(tab === "hidden" || tab === "rejected") && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1 h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => setConfirmDelete(true)}
+              disabled={loading !== null}
+            >
+              {loading === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Sil
+            </Button>
+          )}
         </div>
       </div>
-      <div className="border-t p-3 flex gap-2 flex-wrap">
-        <Button size="sm" className="gap-1.5 h-7 text-xs bg-green-600 hover:bg-green-700" onClick={() => moderate("approve")} disabled={loading !== null}>
-          {loading === "approve" ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
-          Onayla
-        </Button>
-        <Button size="sm" variant="destructive" className="gap-1.5 h-7 text-xs" onClick={() => moderate("reject")} disabled={loading !== null}>
-          {loading === "reject" ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
-          Reddet
-        </Button>
-        <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => moderate("hide")} disabled={loading !== null}>
-          {loading === "hide" ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
-          Gizle
-        </Button>
-        <Link href={`/test/${test.id}`}>
-          <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs">
-            <Eye size={12} /> Görüntüle
-          </Button>
-        </Link>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -147,14 +375,14 @@ function ReportCard({ report, onAction }: { report: Report; onAction: () => void
         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-500">open</span>
       </div>
       <p className="text-[10px] text-muted-foreground mb-3">
-        Content: {report.contentId.slice(0, 12)}… · {new Date(report.createdAt).toLocaleDateString("tr-TR")}
+        İçerik: {report.contentId.slice(0, 12)}… · {new Date(report.createdAt).toLocaleDateString("tr-TR")}
       </p>
       <div className="flex gap-2">
         <Button size="sm" className="h-7 text-xs gap-1" onClick={() => resolve("resolved")} disabled={loading !== null}>
           {loading === "resolved" ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
           Çöz
         </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => resolve("dismissed")} disabled={loading !== null}>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => resolve("dismissed")} disabled={loading !== null}>
           Reddet
         </Button>
         {report.contentType === "test" && (
@@ -188,7 +416,7 @@ function UIDDisplay({ uid }: { uid: string }) {
   );
 }
 
-type Tab = "pending" | "reports" | "seed" | "info";
+type Tab = "pending" | "reports" | "hidden" | "rejected" | "published" | "seed" | "info";
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -200,15 +428,20 @@ export default function AdminPage() {
   const [done, setDone] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("pending");
 
+  const canModerate = roleInfo?.canModerate ?? false;
+
   const { data: needsSeed, isLoading: checkingDb, refetch: refetchSeed } = useQuery({
     queryKey: ["needs-seed"],
     queryFn: isSeedNeeded,
     staleTime: 0,
-    enabled: roleInfo?.canModerate ?? false,
+    enabled: canModerate,
   });
 
-  const { data: pendingTests = [], isLoading: loadingPending } = usePendingTests();
-  const { data: openReports = [], isLoading: loadingReports } = useOpenReports();
+  const { data: pendingTests = [], isLoading: loadingPending } = usePendingTests(canModerate);
+  const { data: openReports = [], isLoading: loadingReports } = useOpenReports(canModerate);
+  const { data: hiddenTests = [], isLoading: loadingHidden } = useTestsByStatus("hidden", canModerate && activeTab === "hidden");
+  const { data: rejectedTests = [], isLoading: loadingRejected } = useTestsByStatus("rejected", canModerate && activeTab === "rejected");
+  const { data: publishedTests = [], isLoading: loadingPublished } = useTestsByStatus("published", canModerate && activeTab === "published");
 
   if (!user) {
     return (
@@ -216,21 +449,21 @@ export default function AdminPage() {
         <Header />
         <main className="flex-1 flex flex-col items-center justify-center gap-6 p-4">
           <ShieldCheck size={48} className="text-muted-foreground" />
-          <p className="text-muted-foreground text-lg">Sign in to access the admin panel.</p>
-          <Link href="/login"><Button className="gap-2"><LogIn size={16} /> Sign In</Button></Link>
+          <p className="text-muted-foreground text-lg">Giriş yapman gerekiyor.</p>
+          <Link href="/login"><Button className="gap-2"><LogIn size={16} /> Giriş Yap</Button></Link>
         </main>
       </div>
     );
   }
 
-  if (!roleInfo?.canModerate) {
+  if (!canModerate) {
     return (
       <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
         <Header />
         <main className="flex-1 flex flex-col items-center justify-center gap-6 p-4">
           <ShieldX size={48} className="text-destructive" />
           <p className="text-muted-foreground text-lg text-center max-w-sm">
-            Access denied. This account is not authorized for the admin panel.
+            Erişim reddedildi. Bu hesap admin paneli için yetkilendirilmemiş.
           </p>
         </main>
       </div>
@@ -255,11 +488,18 @@ export default function AdminPage() {
   const refreshAll = () => {
     qc.invalidateQueries({ queryKey: ["admin-pending-tests"] });
     qc.invalidateQueries({ queryKey: ["admin-open-reports"] });
+    qc.invalidateQueries({ queryKey: ["admin-tests-status", "hidden"] });
+    qc.invalidateQueries({ queryKey: ["admin-tests-status", "rejected"] });
+    qc.invalidateQueries({ queryKey: ["admin-tests-status", "published"] });
+    qc.invalidateQueries({ queryKey: ["tests"] });
   };
 
   const TABS: { key: Tab; label: string; count?: number }[] = [
-    { key: "pending", label: "Bekleyen Testler", count: pendingTests.length },
+    { key: "pending", label: "Bekleyen", count: pendingTests.length },
     { key: "reports", label: "Raporlar", count: openReports.length },
+    { key: "hidden", label: "Gizli" },
+    { key: "rejected", label: "Reddedilen" },
+    { key: "published", label: "Yayınlanan" },
     { key: "seed", label: "Veritabanı" },
     { key: "info", label: "Bilgi" },
   ];
@@ -276,13 +516,12 @@ export default function AdminPage() {
           </span>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex border-b mb-6 gap-0 overflow-x-auto hide-scrollbar">
+        <div className="flex border-b mb-6 gap-0 overflow-x-auto">
           {TABS.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
+              className={`px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 activeTab === tab.key
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -298,7 +537,7 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Pending Tests */}
+        {/* ── Bekleyen ── */}
         {activeTab === "pending" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -318,14 +557,14 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-3">
                 {pendingTests.map(test => (
-                  <PendingTestCard key={test.id} test={test} onAction={refreshAll} />
+                  <AdminTestCard key={test.id} test={test} tab="pending" onAction={refreshAll} />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Reports */}
+        {/* ── Raporlar ── */}
         {activeTab === "reports" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -352,7 +591,85 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Seed */}
+        {/* ── Gizli ── */}
+        {activeTab === "hidden" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <EyeOff size={16} className="text-muted-foreground" />
+                Gizli Testler
+              </h2>
+              <Button size="sm" variant="outline" onClick={refreshAll} className="h-7 text-xs">Yenile</Button>
+            </div>
+            {loadingHidden ? (
+              <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={24} /></div>
+            ) : hiddenTests.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">Gizli test yok.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {hiddenTests.map(test => (
+                  <AdminTestCard key={test.id} test={test} tab="hidden" onAction={refreshAll} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Reddedilen ── */}
+        {activeTab === "rejected" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <Ban size={16} className="text-destructive" />
+                Reddedilen Testler
+              </h2>
+              <Button size="sm" variant="outline" onClick={refreshAll} className="h-7 text-xs">Yenile</Button>
+            </div>
+            {loadingRejected ? (
+              <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={24} /></div>
+            ) : rejectedTests.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">Reddedilen test yok.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rejectedTests.map(test => (
+                  <AdminTestCard key={test.id} test={test} tab="rejected" onAction={refreshAll} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Yayınlanan ── */}
+        {activeTab === "published" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-green-500" />
+                Yayınlanan Testler <span className="text-xs font-normal text-muted-foreground">(son 100)</span>
+              </h2>
+              <Button size="sm" variant="outline" onClick={refreshAll} className="h-7 text-xs">Yenile</Button>
+            </div>
+            {loadingPublished ? (
+              <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={24} /></div>
+            ) : publishedTests.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">Yayınlanan test yok.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {publishedTests.map(test => (
+                  <AdminTestCard key={test.id} test={test} tab="published" onAction={refreshAll} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Veritabanı ── */}
         {activeTab === "seed" && (
           <div className="bg-card border rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex items-center gap-3 mb-2">
@@ -361,15 +678,15 @@ export default function AdminPage() {
             </div>
             {checkingDb ? (
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="animate-spin" size={16} /> Checking database...
+                <Loader2 className="animate-spin" size={16} /> Veritabanı kontrol ediliyor...
               </div>
             ) : needsSeed === false ? (
               <div className="flex items-center gap-2 text-green-500">
-                <CheckCircle2 size={18} /> Database is populated with universes and characters.
+                <CheckCircle2 size={18} /> Veritabanı evren ve karakterlerle dolu.
               </div>
             ) : (
               <p className="text-muted-foreground text-sm">
-                The database is empty. Click the button below to seed it with <strong>60+ universes</strong> and <strong>200+ characters</strong>.
+                Veritabanı boş. Aşağıdaki butona tıklayarak <strong>60+ evren</strong> ve <strong>200+ karakter</strong> ile doldurabilirsin.
               </p>
             )}
             {progress && (
@@ -390,12 +707,12 @@ export default function AdminPage() {
             )}
             <Button onClick={handleSeed} disabled={seeding || needsSeed === false} className="gap-2">
               {seeding ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-              {needsSeed === false ? "Already seeded" : t("btn_seed_db")}
+              {needsSeed === false ? "Zaten dolu" : t("btn_seed_db")}
             </Button>
           </div>
         )}
 
-        {/* Info */}
+        {/* ── Bilgi ── */}
         {activeTab === "info" && (
           <div className="space-y-4">
             <div className="bg-card border rounded-2xl p-6 shadow-sm space-y-4">

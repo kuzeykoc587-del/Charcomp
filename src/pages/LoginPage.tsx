@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,9 +65,10 @@ export default function LoginPage() {
     setGoogleLoading(true);
     try {
       await signInWithGoogle();
-      // signInWithGoogle uses signInWithRedirect — the browser will navigate
-      // to Google and come back. Show a redirecting message.
-      setRedirecting(true);
+      // Desktop (popup): signInWithGoogle resolves after the user is signed in — navigate home.
+      // Mobile (redirect): the browser navigates away during signInWithRedirect,
+      // so this line is never reached on mobile.
+      setLocation("/");
     } catch (err: any) {
       console.error("[CharComp] Google sign-in error:", err);
       const code = err?.code ?? "";
@@ -85,19 +85,6 @@ export default function LoginPage() {
       setGoogleLoading(false);
     }
   };
-
-  if (redirecting) {
-    return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background gap-4">
-        <div className="flex items-center gap-2 font-black text-2xl text-primary">
-          <Swords size={28} />
-          <span>CharComp</span>
-        </div>
-        <Loader2 className="animate-spin text-primary" size={24} />
-        <p className="text-muted-foreground text-sm">Redirecting to Google…</p>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-muted/20 pb-20 md:pb-0">

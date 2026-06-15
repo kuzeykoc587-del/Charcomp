@@ -178,8 +178,8 @@ export function Header() {
         </div>
       </div>
 
-      {/* ── Mobile Bottom Nav — 3 items: Create | Home | Profile ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16 flex items-center justify-between px-8">
+      {/* ── Mobile Bottom Nav ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16 flex items-center justify-around px-4">
 
         <Link href="/create">
           <div className={`flex flex-col items-center gap-0.5 ${isActive("/create") ? "text-primary" : "text-muted-foreground"}`}>
@@ -194,14 +194,27 @@ export function Header() {
 
         <Link href="/">
           <div className={`flex flex-col items-center gap-0.5 ${location === "/" ? "text-primary" : "text-muted-foreground"}`}>
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
               location === "/" ? "bg-primary/15" : "hover:bg-muted"
             }`}>
-              <Home size={22} className={location === "/" ? "text-primary" : ""} />
+              <Home size={20} className={location === "/" ? "text-primary" : ""} />
             </div>
             <span className="text-[10px] font-medium">{t("nav_home")}</span>
           </div>
         </Link>
+
+        {canModerate && (
+          <Link href="/admin">
+            <div className={`flex flex-col items-center gap-0.5 ${isActive("/admin") ? "text-primary" : "text-muted-foreground"}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                isActive("/admin") ? "bg-primary" : "bg-foreground/10"
+              }`}>
+                <ShieldCheck size={18} className={isActive("/admin") ? "text-primary-foreground" : "text-foreground"} />
+              </div>
+              <span className="text-[10px] font-medium">Admin</span>
+            </div>
+          </Link>
+        )}
 
         {user ? (
           <Link href="/profile">

@@ -7,6 +7,8 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithRedirect,
+  signInWithPopup,
+  getRedirectResult,
 } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { usersDb, AppUser } from "../lib/db";
@@ -35,6 +37,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
     ),
   ]);
+}
+
+function isMobileBrowser(): boolean {
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 function minimalProfile(firebaseUser: import("firebase/auth").User): AppUser {
@@ -132,6 +138,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }, AUTH_SAFETY_TIMEOUT_MS);
 
+    // Process any pending redirect result from a previous signInWithRedirect call.
+    // Without this, errors are silently dropped and on some browsers the auth
+    // state is never updated after the Google redirect returns.
+    getRedirectResult(auth).catch((err: unknown) => {
+      const code = (err as { code?: string }).code;
+      // auth/no-auth-event is expected when there is no pending redirect.
+      if (code && code !== "auth/no-auth-event") {
+        console.error("[CharComp] Google redirect error:", err);
+        setAuthError((err as Error).message ?? "Google ile giriş başarısız.");
+      }
+    });
+
     const unsub = onAuthStateChanged(
       auth,
       async (firebaseUser) => {
@@ -187,7 +205,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    await signInWithRedirect(auth, provider);
+
+    if (isMobileBrowser()) {
+      // On mobile, popups are unreliable — use redirect.
+      // getRedirectResult() on the next page load will complete the sign-in.
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+
+    // On desktop, popup is immediate and doesn't require a full page reload.
+    try {
+      const result = await signInWithPopup(auth, provider);
+      // onAuthStateChanged fires automatically; also set user right away
+      // so the UI doesn't wait for the next auth cycle.
+      const profile = await buildProfile(result.user);
+      setUser(profile);
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "auth/popup-blocked" || code === "auth/popup-closed-by-user") {
+        // Popup was blocked by the browser — fall back to redirect.
+        await signInWithRedirect(auth, provider);
+      } else {
+        throw err;
+      }
+    }
   };
 
   const logout = async () => {
