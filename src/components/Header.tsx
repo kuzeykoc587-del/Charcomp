@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   Swords, Home, Plus, User as UserIcon, LogIn,
-  Bell, BellDot
+  Bell, BellDot, ShieldCheck
 } from "lucide-react";
 import { useNotifications } from "../hooks/useFirestore";
 import { notificationsDb } from "../lib/db";
@@ -89,8 +89,10 @@ function NotificationBell() {
 
 export function Header() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, roleInfo } = useAuth();
   const [location] = useLocation();
+
+  const canModerate = roleInfo?.canModerate ?? false;
 
   const desktopNavLinks = [
     { href: "/tests", label: t("nav_tests") },
@@ -123,11 +125,31 @@ export function Header() {
               {link.label}
             </Link>
           ))}
+          {canModerate && (
+            <Link
+              href="/admin"
+              className={`text-sm font-medium transition-colors hover:text-primary flex items-center gap-1 ${
+                isActive("/admin") ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              <ShieldCheck size={14} />
+              Moderasyon
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
           <NotificationBell />
+
+          {canModerate && (
+            <Link href="/admin" className="hidden sm:inline-flex">
+              <Button variant="outline" size="sm" className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10">
+                <ShieldCheck size={14} />
+                Admin
+              </Button>
+            </Link>
+          )}
 
           <Link href="/create" className="hidden sm:inline-flex">
             <Button variant="default" size="sm" className="gap-2">
@@ -159,7 +181,6 @@ export function Header() {
       {/* ── Mobile Bottom Nav — 3 items: Create | Home | Profile ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16 flex items-center justify-between px-8">
 
-        {/* Create — left, small rounded-square */}
         <Link href="/create">
           <div className={`flex flex-col items-center gap-0.5 ${isActive("/create") ? "text-primary" : "text-muted-foreground"}`}>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
@@ -171,7 +192,6 @@ export function Header() {
           </div>
         </Link>
 
-        {/* Home — center, slightly larger */}
         <Link href="/">
           <div className={`flex flex-col items-center gap-0.5 ${location === "/" ? "text-primary" : "text-muted-foreground"}`}>
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
@@ -183,7 +203,6 @@ export function Header() {
           </div>
         </Link>
 
-        {/* Profile — right, avatar circle */}
         {user ? (
           <Link href="/profile">
             <div className={`flex flex-col items-center gap-0.5 ${isActive("/profile") ? "text-primary" : "text-muted-foreground"}`}>

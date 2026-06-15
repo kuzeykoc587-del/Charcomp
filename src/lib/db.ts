@@ -75,6 +75,17 @@ export interface Test {
   deleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  status?: "published" | "pending" | "hidden" | "rejected";
+  moderationStatus?: "clean" | "flagged" | "needs_review";
+  riskScore?: number;
+  riskReasons?: string[];
+  duplicateWarning?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  hiddenBy?: string;
+  hiddenAt?: string;
 }
 
 export interface Duel {
@@ -99,6 +110,21 @@ export interface AppUser {
   avatar: string;
   bio: string;
   email: string;
+  role?: "ADMIN" | "MODERATOR" | "MEMBER" | "NEW_MEMBER";
+  isBanned?: boolean;
+  isRestricted?: boolean;
+  createdAt?: string;
+}
+
+export interface Report {
+  id: string;
+  contentType: "test" | "duel" | "tierlist" | "thisorthat" | "universe";
+  contentId: string;
+  reportedBy: string;
+  reason: string;
+  details?: string;
+  createdAt: string;
+  status: "open" | "resolved" | "dismissed";
 }
 
 export interface FavoriteItem {
@@ -285,6 +311,7 @@ export const testsDb = {
     sort?: "popular" | "new" | "trending";
     search?: string;
     limit?: number;
+    includeNonPublished?: boolean;
   }): Promise<Test[]> => {
     const col = collection(firestore, "tests");
     const lim = filters?.limit ?? 50;
@@ -293,11 +320,73 @@ export const testsDb = {
     if (filters?.sort === "trending") q = query(col, orderBy("likeCount", "desc"), limit(lim));
     const snap = await getDocs(q);
     let results = snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
+    if (!filters?.includeNonPublished) {
+      results = results.filter(t => !t.status || t.status === "published");
+    }
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(t => t.title.toLowerCase().includes(s) || t.description.toLowerCase().includes(s));
     }
     return results;
+  },
+
+  getPending: async (): Promise<Test[]> => {
+    const col = collection(firestore, "tests");
+    const snap = await getDocs(col);
+    return snap.docs
+      .map(d => fromDoc<Test>(d))
+      .filter(t => !t.deleted && (t.status === "pending" || t.moderationStatus === "flagged" || t.moderationStatus === "needs_review"))
+      .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0));
+  },
+
+  countCreatedToday: async (creatorId: string): Promise<number> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+    const q = query(
+      collection(firestore, "tests"),
+      where("creatorId", "==", creatorId),
+      where("createdAt", ">=", todayIso)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.filter(d => !d.data().deleted).length;
+  },
+
+  getAllTitles: async (): Promise<string[]> => {
+    const snap = await getDocs(collection(firestore, "tests"));
+    return snap.docs.filter(d => !d.data().deleted).map(d => d.data().title as string).filter(Boolean);
+  },
+
+  getAllCoverImages: async (): Promise<{ url: string; publicId?: string }[]> => {
+    const snap = await getDocs(collection(firestore, "tests"));
+    return snap.docs
+      .filter(d => !d.data().deleted)
+      .map(d => ({ url: d.data().coverImage as string, publicId: d.data().coverImagePublicId as string | undefined }))
+      .filter(e => e.url);
+  },
+
+  moderate: async (
+    id: string,
+    action: "approve" | "reject" | "hide",
+    moderatorId: string,
+    _reason?: string
+  ): Promise<void> => {
+    const updates: Record<string, unknown> = {};
+    if (action === "approve") {
+      updates.status = "published";
+      updates.moderationStatus = "clean";
+      updates.approvedBy = moderatorId;
+      updates.approvedAt = ts();
+    } else if (action === "reject") {
+      updates.status = "rejected";
+      updates.rejectedBy = moderatorId;
+      updates.rejectedAt = ts();
+    } else if (action === "hide") {
+      updates.status = "hidden";
+      updates.hiddenBy = moderatorId;
+      updates.hiddenAt = ts();
+    }
+    await updateDoc(doc(firestore, "tests", id), updates);
   },
 
   getById: async (id: string): Promise<Test | null> => {
@@ -311,7 +400,13 @@ export const testsDb = {
     return snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
   },
 
-  create: async (data: Omit<Test, "id" | "createdAt" | "playCount" | "likeCount" | "favoriteCount" | "stats">): Promise<string> => {
+  create: async (data: Omit<Test, "id" | "createdAt" | "playCount" | "likeCount" | "favoriteCount" | "stats"> & {
+    status?: Test["status"];
+    moderationStatus?: Test["moderationStatus"];
+    riskScore?: number;
+    riskReasons?: string[];
+    duplicateWarning?: string;
+  }): Promise<string> => {
     const ref = await addDoc(collection(firestore, "tests"), {
       ...data,
       playCount: 0, likeCount: 0, favoriteCount: 0,
@@ -493,6 +588,67 @@ export const usersDb = {
 
   upsert: async (user: AppUser): Promise<void> => {
     await setDoc(doc(firestore, "users", user.id), user, { merge: true });
+  },
+
+  updateRole: async (id: string, role: AppUser["role"]): Promise<void> => {
+    await updateDoc(doc(firestore, "users", id), { role });
+  },
+
+  setBanned: async (id: string, isBanned: boolean): Promise<void> => {
+    await updateDoc(doc(firestore, "users", id), { isBanned });
+  },
+
+  getAll: async (): Promise<AppUser[]> => {
+    const snap = await getDocs(collection(firestore, "users"));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AppUser));
+  },
+};
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+export const reportsDb = {
+  create: async (data: Omit<Report, "id" | "createdAt" | "status">): Promise<string> => {
+    const existing = await reportsDb.getByUserAndContent(data.reportedBy, data.contentId);
+    if (existing) throw new Error("already_reported");
+    const ref = await addDoc(collection(firestore, "reports"), {
+      ...data, createdAt: ts(), status: "open",
+    });
+    const countSnap = await getDocs(
+      query(collection(firestore, "reports"), where("contentId", "==", data.contentId), where("status", "==", "open"))
+    );
+    if (countSnap.size >= 5 && data.contentType === "test") {
+      await updateDoc(doc(firestore, "tests", data.contentId), {
+        moderationStatus: "flagged",
+        status: "pending",
+      }).catch(() => {});
+    }
+    return ref.id;
+  },
+
+  getAll: async (): Promise<Report[]> => {
+    const q = query(collection(firestore, "reports"), orderBy("createdAt", "desc"), limit(100));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<Report>(d));
+  },
+
+  getOpen: async (): Promise<Report[]> => {
+    const q = query(collection(firestore, "reports"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(100));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<Report>(d));
+  },
+
+  getByUserAndContent: async (userId: string, contentId: string): Promise<Report | null> => {
+    const q = query(
+      collection(firestore, "reports"),
+      where("reportedBy", "==", userId),
+      where("contentId", "==", contentId)
+    );
+    const snap = await getDocs(q);
+    return snap.empty ? null : fromDoc<Report>(snap.docs[0]);
+  },
+
+  resolve: async (id: string, action: "resolved" | "dismissed"): Promise<void> => {
+    await updateDoc(doc(firestore, "reports", id), { status: action });
   },
 };
 

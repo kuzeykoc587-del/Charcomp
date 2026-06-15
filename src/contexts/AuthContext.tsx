@@ -10,11 +10,13 @@ import {
 } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { usersDb, AppUser } from "../lib/db";
+import { resolveRole, getRoleInfo, type UserRole, type RoleInfo } from "../lib/roles";
 
 interface AuthContextType {
   user: AppUser | null;
   authLoading: boolean;
   authError: string | null;
+  roleInfo: RoleInfo | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -35,7 +37,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-/** Build minimal profile from Firebase user object — never hits Firestore, never fails */
 function minimalProfile(firebaseUser: import("firebase/auth").User): AppUser {
   return {
     id: firebaseUser.uid,
@@ -53,11 +54,6 @@ function minimalProfile(firebaseUser: import("firebase/auth").User): AppUser {
   };
 }
 
-/**
- * Try to load full profile from Firestore.
- * ALWAYS returns a valid profile — never throws.
- * Falls back to minimal profile if Firestore is slow or unavailable.
- */
 async function buildProfile(
   firebaseUser: import("firebase/auth").User
 ): Promise<AppUser> {
@@ -67,9 +63,19 @@ async function buildProfile(
       FIRESTORE_TIMEOUT_MS,
       "Firestore getById"
     );
-    if (fromDb) return fromDb;
+    if (fromDb) {
+      if (!fromDb.createdAt) {
+        const withCreatedAt = { ...fromDb, createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString() };
+        withTimeout(usersDb.upsert(withCreatedAt), FIRESTORE_TIMEOUT_MS, "Firestore upsert createdAt").catch(() => {});
+        return withCreatedAt;
+      }
+      return fromDb;
+    }
 
-    const profile = minimalProfile(firebaseUser);
+    const profile: AppUser = {
+      ...minimalProfile(firebaseUser),
+      createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
+    };
     withTimeout(usersDb.upsert(profile), FIRESTORE_TIMEOUT_MS, "Firestore upsert").catch(
       (e) => console.error("[CharComp] Could not persist profile (non-fatal):", e)
     );
@@ -77,17 +83,25 @@ async function buildProfile(
   } catch (err) {
     console.error(
       "[CharComp] Firestore unreachable — using minimal profile. " +
-      "Check Firestore rules and network on Vercel.",
+      "Check Firestore rules and network.",
       err
     );
     return minimalProfile(firebaseUser);
   }
 }
 
+function computeRoleInfo(user: AppUser | null): RoleInfo | null {
+  if (!user) return null;
+  const role: UserRole = resolveRole(user.id, user.email, user.createdAt, user.role);
+  return getRoleInfo(role);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  const roleInfo = computeRoleInfo(user);
 
   useEffect(() => {
     let settled = false;
@@ -99,7 +113,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Safety net: unblock the app if Firebase Auth never responds
     const safetyTimer = setTimeout(() => {
       if (!settled) {
         const msg =
@@ -117,7 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (firebaseUser) => {
         clearTimeout(safetyTimer);
         if (firebaseUser) {
-          // buildProfile never throws — always returns a valid profile
           const profile = await buildProfile(firebaseUser);
           setUser(profile);
         } else {
@@ -139,22 +151,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  /**
-   * Email / password sign-in.
-   * Sets user IMMEDIATELY after auth succeeds so the app doesn't wait on Firestore.
-   * onAuthStateChanged will also fire and may update with a richer profile later.
-   */
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    // Eagerly set minimal profile so navigation works right away
     setUser(minimalProfile(cred.user));
-    // Load full profile in background
     buildProfile(cred.user).then(setUser).catch(() => {});
   };
 
-  /**
-   * Email / password registration.
-   */
   const signUp = async (email: string, password: string, name: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -167,32 +169,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       avatar,
       bio: "",
       email,
+      createdAt: new Date().toISOString(),
     };
-    // Set user immediately — don't wait on Firestore
     setUser(profile);
     usersDb.upsert(profile).catch((e) =>
       console.error("[CharComp] signUp Firestore upsert failed (non-fatal):", e)
     );
   };
 
-  /**
-   * Google Sign-In via redirect (works on mobile and all Vercel deployments).
-   * The page will navigate to Google and come back — onAuthStateChanged handles
-   * the user state on return. No need to call setLocation after this.
-   *
-   * IMPORTANT: Add your Vercel domain to Firebase Console →
-   * Authentication → Settings → Authorized Domains, or this will throw
-   * auth/unauthorized-domain.
-   */
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    console.log(
-      "[CharComp] Starting Google sign-in via redirect. " +
-      "Ensure your Vercel domain is in Firebase Console → Authentication → Authorized Domains."
-    );
     await signInWithRedirect(auth, provider);
-    // Browser navigates away here. Code below never runs until redirect returns.
   };
 
   const logout = async () => {
@@ -202,7 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, authLoading, authError, signIn, signUp, signInWithGoogle, logout }}
+      value={{ user, authLoading, authError, roleInfo, signIn, signUp, signInWithGoogle, logout }}
     >
       {children}
     </AuthContext.Provider>

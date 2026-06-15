@@ -11,11 +11,12 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { useToast } from "../hooks/use-toast";
 import { testsDb } from "../lib/db";
-import { Loader2, ArrowLeft, FlaskConical } from "lucide-react";
+import { computeRiskScore } from "../lib/moderation";
+import { Loader2, ArrowLeft, FlaskConical, AlertTriangle, Info } from "lucide-react";
 
 export default function TestCreatePage() {
   const { t, language } = useTranslation();
-  const { user } = useAuth();
+  const { user, roleInfo } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -25,6 +26,10 @@ export default function TestCreatePage() {
   const [coverImage, setCoverImage] = useState("");
   const [pool, setPool] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<"exact" | "similar" | "image" | null>(null);
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
+  const [pendingPublish, setPendingPublish] = useState(false);
 
   if (!user) {
     return (
@@ -41,13 +46,64 @@ export default function TestCreatePage() {
     );
   }
 
-  const handlePublish = async () => {
+  const handlePublish = async (skipDuplicateCheck = false) => {
     if (!title || pool.length < 2) {
       toast({ title: "Error", description: "Title and at least 2 characters required", variant: "destructive" });
       return;
     }
+
     setPublishing(true);
+    setShowDuplicateConfirm(false);
+
     try {
+      const canBypassLimits = roleInfo?.canBypassLimits ?? false;
+      const dailyLimit = roleInfo?.dailyTestLimit ?? 5;
+
+      if (!canBypassLimits) {
+        const todayCount = await testsDb.countCreatedToday(user.id);
+        if (todayCount >= dailyLimit) {
+          setLimitReached(true);
+          setPublishing(false);
+          return;
+        }
+      }
+
+      let existingTitles: string[] = [];
+      let existingImageUrls: string[] = [];
+      let existingImagePublicIds: string[] = [];
+
+      if (!canBypassLimits) {
+        try {
+          [existingTitles, existingImageUrls] = await Promise.all([
+            testsDb.getAllTitles(),
+            testsDb.getAllCoverImages().then(imgs => imgs.map(i => i.url)),
+          ]);
+          const imageData = await testsDb.getAllCoverImages();
+          existingImagePublicIds = imageData.map(i => i.publicId ?? "").filter(Boolean);
+        } catch {
+          /* non-fatal */
+        }
+      }
+
+      const modResult = computeRiskScore({
+        title,
+        description,
+        coverImageUrl: coverImage || undefined,
+        existingTitles,
+        existingImageUrls,
+        existingImagePublicIds,
+        userRole: roleInfo?.role ?? "MEMBER",
+        userCreatedAt: user.createdAt,
+      });
+
+      if (!skipDuplicateCheck && modResult.duplicateWarning) {
+        setDuplicateWarning(modResult.duplicateWarning as "exact" | "similar" | "image");
+        setPendingPublish(true);
+        setShowDuplicateConfirm(true);
+        setPublishing(false);
+        return;
+      }
+
       const id = await testsDb.create({
         title,
         description,
@@ -55,13 +111,28 @@ export default function TestCreatePage() {
         creatorId: user.id,
         language,
         characterIds: pool,
-      });
-      toast({ title: "Success", description: t("msg_publish_success") });
-      setLocation(`/test/${id}`);
+        status: modResult.status,
+        moderationStatus: modResult.moderationStatus,
+        riskScore: modResult.riskScore,
+        riskReasons: modResult.riskReasons,
+        duplicateWarning: modResult.duplicateWarning,
+      } as Parameters<typeof testsDb.create>[0]);
+
+      if (modResult.status === "pending") {
+        toast({
+          title: "Test gönderildi",
+          description: "Testiniz inceleme kuyruğuna alındı. Onaylandıktan sonra yayınlanacak.",
+        });
+        setLocation("/tests");
+      } else {
+        toast({ title: "Success", description: t("msg_publish_success") });
+        setLocation(`/test/${id}`);
+      }
     } catch {
       toast({ title: "Error", description: "Failed to publish test", variant: "destructive" });
     } finally {
       setPublishing(false);
+      setPendingPublish(false);
     }
   };
 
@@ -78,6 +149,44 @@ export default function TestCreatePage() {
           <FlaskConical size={22} className="text-violet-400" />
           <h1 className="text-2xl font-black">{t("lbl_create_test")}</h1>
         </div>
+
+        {limitReached && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-sm text-amber-700 dark:text-amber-400">Günlük limit doldu</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Bugünkü test oluşturma limitine ulaştın. Yarın tekrar deneyebilirsin.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {showDuplicateConfirm && (
+          <div className="mb-6 p-4 rounded-xl bg-sky-500/10 border border-sky-500/30">
+            <div className="flex items-start gap-3 mb-3">
+              <Info size={18} className="text-sky-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold text-sm text-sky-700 dark:text-sky-400">Benzer içerik uyarısı</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {duplicateWarning === "exact"
+                    ? "Bu başlıkla aynı bir test zaten var. Yine de yayınlamak istiyor musun?"
+                    : duplicateWarning === "similar"
+                    ? "Benzer başlıklı testler bulundu. Yine de devam etmek istiyor musun?"
+                    : "Bu görsel başka bir testte kullanılmış olabilir. Yine de devam etmek istiyor musun?"}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => { setShowDuplicateConfirm(false); if (pendingPublish) handlePublish(true); }}>
+                Evet, devam et
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setShowDuplicateConfirm(false); setPendingPublish(false); }}>
+                İptal
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-between items-center mb-8 relative">
           <div className="absolute top-1/2 left-0 right-0 h-1 bg-border -z-10" />
@@ -142,7 +251,7 @@ export default function TestCreatePage() {
               </div>
               <div className="flex justify-between pt-4 border-t">
                 <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-                <Button size="lg" className="px-8 gap-2" onClick={handlePublish} disabled={publishing}>
+                <Button size="lg" className="px-8 gap-2" onClick={() => handlePublish(false)} disabled={publishing || limitReached}>
                   {publishing && <Loader2 size={16} className="animate-spin" />}
                   {t("btn_publish")}
                 </Button>

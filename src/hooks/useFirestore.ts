@@ -2,9 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, universesDb, charactersDb, duelsDb,
   likesDb, favoritesDb, recentlyPlayedDb, tierVotesDb, notificationsDb,
-  thisOrThatDb, tierListsDb, tierListResultsDb,
+  thisOrThatDb, tierListsDb, tierListResultsDb, reportsDb,
   type Test, type Universe, type Character, type Duel, type FavoriteItem,
-  type TierVote, type Notification, type ThisOrThat, type TierList, type TierListResult
+  type TierVote, type Notification, type ThisOrThat, type TierList, type TierListResult, type Report
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -278,4 +278,20 @@ export const useCommunityTierListResults = (tierListId: string | undefined) =>
     queryFn: () => (tierListId ? tierListResultsDb.getCommunityResults(tierListId) : []),
     enabled: Boolean(tierListId),
     staleTime: 30_000,
+  });
+
+// ── Moderation / Reports ──────────────────────────────────────────────────────
+
+export const usePendingTests = () =>
+  useQuery<Test[]>({
+    queryKey: ["admin-pending-tests"],
+    queryFn: () => testsDb.getPending(),
+    staleTime: 0,
+  });
+
+export const useOpenReports = () =>
+  useQuery<Report[]>({
+    queryKey: ["admin-open-reports"],
+    queryFn: () => reportsDb.getOpen(),
+    staleTime: 0,
   });
