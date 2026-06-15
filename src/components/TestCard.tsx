@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { Play, Users, Flag, EyeOff, CheckCheck, Ban } from "lucide-react";
+import { Play, Users, Flag, EyeOff, CheckCheck, Ban, Image } from "lucide-react";
 import { LikeButton } from "./LikeButton";
 import { FavoriteButton } from "./FavoriteButton";
+import { CoverEditModal } from "./CoverEditModal";
 import { useAuth } from "../contexts/AuthContext";
 import { testsDb, reportsDb } from "../lib/db";
 import { useQueryClient } from "@tanstack/react-query";
@@ -120,6 +121,7 @@ export function TestCard({ test }: TestCardProps) {
   const { user, roleInfo } = useAuth();
   const qc = useQueryClient();
   const [showReport, setShowReport] = useState(false);
+  const [showCoverEdit, setShowCoverEdit] = useState(false);
   const [moderating, setModerating] = useState<string | null>(null);
 
   const canModerate = roleInfo?.canModerate ?? false;
@@ -138,9 +140,22 @@ export function TestCard({ test }: TestCardProps) {
     }
   };
 
+  const handleCoverSaved = () => {
+    qc.invalidateQueries({ queryKey: ["tests"] });
+    qc.invalidateQueries({ queryKey: ["test", test.id] });
+    qc.invalidateQueries({ queryKey: ["admin-tests-status"] });
+  };
+
   return (
     <>
       {showReport && <ReportModal testId={test.id} onClose={() => setShowReport(false)} />}
+      {showCoverEdit && canModerate && (
+        <CoverEditModal
+          test={test}
+          onClose={() => setShowCoverEdit(false)}
+          onSaved={handleCoverSaved}
+        />
+      )}
 
       <div className="group relative flex flex-col rounded-xl bg-card border border-border overflow-hidden transition-all hover:shadow-lg hover:border-primary/50">
         <Link href={`/test/${test.id}`} className="absolute inset-0 z-10">
@@ -176,6 +191,17 @@ export function TestCard({ test }: TestCardProps) {
               </span>
             </div>
           )}
+
+          {/* Admin cover edit overlay */}
+          {canModerate && (
+            <button
+              onClick={e => { e.preventDefault(); setShowCoverEdit(true); }}
+              className="absolute bottom-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1"
+              title="Kapak Düzenle"
+            >
+              <Image size={10} /> Kapak
+            </button>
+          )}
         </div>
 
         <div className="p-3 flex flex-col flex-1">
@@ -206,6 +232,13 @@ export function TestCard({ test }: TestCardProps) {
                 className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors"
               >
                 <Ban size={12} />
+              </button>
+              <button
+                onClick={(e) => { e.preventDefault(); setShowCoverEdit(true); }}
+                title="Kapak Düzenle"
+                className="p-1 rounded bg-primary/10 hover:bg-primary/20 text-primary transition-colors ml-auto"
+              >
+                <Image size={12} />
               </button>
             </div>
           )}

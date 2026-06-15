@@ -1,21 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "../components/Header";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ImageUpload } from "../components/ImageUpload";
 import { ConfirmModal } from "../components/ConfirmModal";
-import { useAuth } from "../contexts/AuthContext";
+import { CoverEditModal } from "../components/CoverEditModal";
+import { useAuth, getAuthDiagnostics, type AuthDiagnostics } from "../contexts/AuthContext";
 import { seedDatabase, isSeedNeeded } from "../lib/seed";
 import { useTranslation } from "../contexts/LanguageContext";
 import { Link } from "wouter";
 import {
   LogIn, Loader2, CheckCircle2, Database, ShieldCheck, ShieldX,
   Eye, EyeOff, Ban, CheckCheck, AlertTriangle, Flag, Users,
-  Copy, Check, Pencil, Trash2
+  Copy, Check, Pencil, Trash2, Image, RefreshCw, Activity
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { testsDb, reportsDb, type Test, type Report } from "../lib/db";
 
+// ── Status helpers ─────────────────────────────────────────────────────────────
 function useTestsByStatus(status: NonNullable<Test["status"]>, enabled: boolean) {
   return useQuery<Test[]>({
     queryKey: ["admin-tests-status", status],
@@ -43,6 +45,7 @@ function useOpenReports(enabled: boolean) {
   });
 }
 
+// ── Badge components ──────────────────────────────────────────────────────────
 function RiskBadge({ score }: { score: number }) {
   if (score >= 7) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-500">Risk: {score}</span>;
   if (score >= 4) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-500">Risk: {score}</span>;
@@ -63,6 +66,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Test Edit Modal (full) ────────────────────────────────────────────────────
 function TestEditModal({ test, onClose, onSaved }: { test: Test; onClose: () => void; onSaved: () => void }) {
   const { user } = useAuth();
   const [title, setTitle] = useState(test.title);
@@ -167,6 +171,7 @@ function TestEditModal({ test, onClose, onSaved }: { test: Test; onClose: () => 
   );
 }
 
+// ── Admin Test Card ───────────────────────────────────────────────────────────
 type ContentTab = "pending" | "reports" | "hidden" | "rejected" | "published";
 
 function AdminTestCard({
@@ -181,6 +186,7 @@ function AdminTestCard({
   const { user } = useAuth();
   const [loading, setLoading] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingCover, setEditingCover] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const moderate = async (action: "approve" | "reject" | "hide") => {
@@ -211,6 +217,13 @@ function AdminTestCard({
 
   return (
     <>
+      {editingCover && (
+        <CoverEditModal
+          test={test}
+          onClose={() => setEditingCover(false)}
+          onSaved={onAction}
+        />
+      )}
       {editing && (
         <TestEditModal
           test={test}
@@ -228,7 +241,7 @@ function AdminTestCard({
 
       <div className="bg-card border rounded-xl overflow-hidden">
         <div className="flex gap-3 p-4">
-          <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted shrink-0">
+          <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted shrink-0 relative group/cover">
             <img
               src={test.coverImage}
               alt={test.title}
@@ -237,6 +250,14 @@ function AdminTestCard({
                 (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(test.title)}&background=7C3AED&color=fff&size=100&bold=true`;
               }}
             />
+            <button
+              onClick={() => setEditingCover(true)}
+              className="absolute inset-0 bg-black/60 opacity-0 group-hover/cover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-0.5 text-white"
+              title="Kapak Düzenle"
+            >
+              <Image size={14} />
+              <span className="text-[9px] font-bold">Kapak</span>
+            </button>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
@@ -260,11 +281,24 @@ function AdminTestCard({
             <p className="text-[10px] text-muted-foreground">
               {test.creatorId.slice(0, 12)}… · {test.createdAt ? new Date(test.createdAt).toLocaleDateString("tr-TR") : "—"}
               {test.updatedBy && " · düzenlendi"}
+              {test.hiddenBy && ` · gizlendi`}
+              {test.rejectedBy && ` · reddedildi`}
             </p>
           </div>
         </div>
 
         <div className="border-t p-3 flex gap-2 flex-wrap">
+          {/* Primary action: cover edit button (most visible) */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
+            onClick={() => setEditingCover(true)}
+            disabled={loading !== null}
+          >
+            <Image size={12} /> Kapak Düzenle
+          </Button>
+
           {(tab === "hidden" || tab === "rejected") && (
             <Button
               size="sm"
@@ -349,6 +383,7 @@ function AdminTestCard({
   );
 }
 
+// ── Report Card ───────────────────────────────────────────────────────────────
 function ReportCard({ report, onAction }: { report: Report; onAction: () => void }) {
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -397,6 +432,7 @@ function ReportCard({ report, onAction }: { report: Report; onAction: () => void
   );
 }
 
+// ── UID Display ───────────────────────────────────────────────────────────────
 function UIDDisplay({ uid }: { uid: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -416,7 +452,69 @@ function UIDDisplay({ uid }: { uid: string }) {
   );
 }
 
-type Tab = "pending" | "reports" | "hidden" | "rejected" | "published" | "seed" | "info";
+// ── Auth Diagnostic Panel (admin-only) ────────────────────────────────────────
+function AuthDiagPanel() {
+  const [diag, setDiag] = useState<AuthDiagnostics>(getAuthDiagnostics());
+
+  const refresh = () => setDiag(getAuthDiagnostics());
+
+  useEffect(() => {
+    const id = setInterval(refresh, 2000);
+    return () => clearInterval(id);
+  }, []);
+
+  const stateColor = (s: string) => {
+    if (s === "success" || s === "app_user_loaded") return "text-green-500";
+    if (s === "error" || s === "profile_error") return "text-red-500";
+    if (s === "not_called" || s === "null" || s === "logged_out") return "text-muted-foreground";
+    return "text-amber-500";
+  };
+
+  const Row = ({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) => (
+    <div className="flex items-start gap-3 py-1.5 border-b last:border-0">
+      <span className="text-[11px] text-muted-foreground w-40 shrink-0">{label}</span>
+      <span className={`text-[11px] break-all ${mono ? "font-mono" : "font-medium"} ${stateColor(value)}`}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-sm flex items-center gap-2">
+          <Activity size={15} className="text-primary" />
+          Auth Tanı Paneli
+        </h3>
+        <Button size="sm" variant="outline" onClick={refresh} className="h-7 text-xs gap-1">
+          <RefreshCw size={12} /> Yenile
+        </Button>
+      </div>
+
+      <div className="divide-y text-xs">
+        <Row label="Firebase projectId" value={diag.projectId} mono />
+        <Row label="Firebase authDomain" value={diag.authDomain} mono />
+        <Row label="Current URL" value={diag.currentUrl} mono />
+        <Row label="Firebase UID" value={diag.firebaseUserUid ?? "(null)"} mono />
+        <Row label="Firebase Email" value={diag.firebaseUserEmail ?? "(null)"} mono />
+        <Row label="onAuthStateChanged fired" value={diag.onAuthStateChangedFired ? "evet" : "hayır"} />
+        <Row label="Son Google yöntemi" value={diag.lastGoogleLoginMethod ?? "henüz yok"} />
+        <Row label="getRedirectResult çağrıldı mı" value={diag.redirectResultCalled ? "evet" : "hayır"} />
+        <Row label="getRedirectResult durumu" value={diag.redirectResultStatus} />
+        <Row label="Son hata kodu" value={diag.lastAuthErrorCode ?? "—"} mono />
+        <Row label="Son hata mesajı" value={diag.lastAuthErrorMessage ?? "—"} />
+        <Row label="Firestore upsert durumu" value={diag.firestoreUpsertStatus} />
+        <Row label="Firestore read durumu" value={diag.firestoreReadStatus} />
+        <Row label="Final kullanıcı durumu" value={diag.finalAppUserState} />
+      </div>
+
+      <div className="text-[10px] text-muted-foreground border-t pt-3">
+        Bu panel yalnızca admin/moderatörlere görünür. Konsol loglarını <code className="font-mono bg-muted px-1 rounded">[AUTH]</code> önekiyle filtreleyin.
+      </div>
+    </div>
+  );
+}
+
+// ── Main AdminPage ────────────────────────────────────────────────────────────
+type Tab = "pending" | "reports" | "hidden" | "rejected" | "published" | "seed" | "info" | "auth-diag";
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -429,6 +527,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>("pending");
 
   const canModerate = roleInfo?.canModerate ?? false;
+  const isAdmin = roleInfo?.isAdmin ?? false;
 
   const { data: needsSeed, isLoading: checkingDb, refetch: refetchSeed } = useQuery({
     queryKey: ["needs-seed"],
@@ -494,7 +593,7 @@ export default function AdminPage() {
     qc.invalidateQueries({ queryKey: ["tests"] });
   };
 
-  const TABS: { key: Tab; label: string; count?: number }[] = [
+  const TABS: { key: Tab; label: string; count?: number; adminOnly?: boolean }[] = [
     { key: "pending", label: "Bekleyen", count: pendingTests.length },
     { key: "reports", label: "Raporlar", count: openReports.length },
     { key: "hidden", label: "Gizli" },
@@ -502,7 +601,8 @@ export default function AdminPage() {
     { key: "published", label: "Yayınlanan" },
     { key: "seed", label: "Veritabanı" },
     { key: "info", label: "Bilgi" },
-  ];
+    { key: "auth-diag", label: "Auth Tanı", adminOnly: true },
+  ].filter(tab => !tab.adminOnly || isAdmin);
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
@@ -598,6 +698,7 @@ export default function AdminPage() {
               <h2 className="font-bold text-base flex items-center gap-2">
                 <EyeOff size={16} className="text-muted-foreground" />
                 Gizli Testler
+                <span className="text-xs font-normal text-muted-foreground">· Yayınla ile geri al</span>
               </h2>
               <Button size="sm" variant="outline" onClick={refreshAll} className="h-7 text-xs">Yenile</Button>
             </div>
@@ -624,6 +725,7 @@ export default function AdminPage() {
               <h2 className="font-bold text-base flex items-center gap-2">
                 <Ban size={16} className="text-destructive" />
                 Reddedilen Testler
+                <span className="text-xs font-normal text-muted-foreground">· Yayınla ile geri al</span>
               </h2>
               <Button size="sm" variant="outline" onClick={refreshAll} className="h-7 text-xs">Yenile</Button>
             </div>
@@ -759,6 +861,64 @@ export default function AdminPage() {
                   </Link>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Auth Tanı (admin only) ── */}
+        {activeTab === "auth-diag" && isAdmin && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <Activity size={16} className="text-primary" />
+                Auth Tanı Paneli
+              </h2>
+            </div>
+
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400">
+              Bu panel yalnızca Google Login sorunlarını teşhis etmek için tasarlanmıştır. Normal kullanıcılar bunu göremez.
+            </div>
+
+            <AuthDiagPanel />
+
+            <div className="bg-card border rounded-2xl p-5 space-y-3">
+              <h3 className="font-bold text-sm">Ortam Değişkenleri</h3>
+              <div className="space-y-1.5 font-mono text-xs">
+                {[
+                  "VITE_FIREBASE_API_KEY",
+                  "VITE_FIREBASE_AUTH_DOMAIN",
+                  "VITE_FIREBASE_PROJECT_ID",
+                  "VITE_FIREBASE_STORAGE_BUCKET",
+                  "VITE_FIREBASE_MESSAGING_SENDER_ID",
+                  "VITE_FIREBASE_APP_ID",
+                  "VITE_ADMIN_EMAILS",
+                  "VITE_ADMIN_UIDS",
+                  "VITE_CLOUDINARY_CLOUD_NAME",
+                  "VITE_CLOUDINARY_UPLOAD_PRESET",
+                ].map(key => {
+                  const raw = import.meta.env[key] as string | undefined;
+                  const set = !!raw;
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">{key}</span>
+                      <span className={set ? "text-green-500" : "text-red-500"}>
+                        {set ? (key.includes("CLOUDINARY") || key.includes("ADMIN") ? raw.slice(0, 6) + "…" : "✓ set") : "✗ missing"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-card border rounded-2xl p-5 space-y-2">
+              <h3 className="font-bold text-sm mb-2">Google Login Kontrol Listesi</h3>
+              <ul className="space-y-1.5 text-xs text-muted-foreground">
+                <li>✓ Firebase Console → Authentication → Sign-in methods → Google etkin mi?</li>
+                <li>✓ Firebase Console → Authentication → Authorized Domains → tüm alan adları eklendi mi? (localhost, replit.dev, vercel.app, özel alan)</li>
+                <li>✓ VITE_FIREBASE_AUTH_DOMAIN, Firebase projesinin authDomain'i ile eşleşiyor mu?</li>
+                <li>✓ Popup engellendi mi? (Mobil → redirect kullanılmalı; Desktop → popup)</li>
+                <li>✓ Konsolda <code className="bg-muted px-1 rounded">[AUTH]</code> logları kontrol et</li>
+              </ul>
             </div>
           </div>
         )}

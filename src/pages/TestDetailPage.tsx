@@ -1,27 +1,39 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { Header } from "../components/Header";
 import { ModeSelector } from "../components/ModeSelector";
 import { LikeButton } from "../components/LikeButton";
 import { FavoriteButton } from "../components/FavoriteButton";
-import { Play, ArrowLeft, Loader2 } from "lucide-react";
+import { CoverEditModal } from "../components/CoverEditModal";
+import { Play, ArrowLeft, Loader2, Image } from "lucide-react";
 import { useTranslation } from "../contexts/LanguageContext";
 import { Button } from "../components/ui/button";
 import { useTest, useCharactersByIds, useUserFavorites } from "../hooks/useFirestore";
 import { useAuth } from "../contexts/AuthContext";
 import { recentlyPlayedDb } from "../lib/db";
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function TestDetailPage() {
   const { id } = useParams();
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, roleInfo } = useAuth();
+  const qc = useQueryClient();
+  const [showCoverEdit, setShowCoverEdit] = useState(false);
 
   const { data: test, isLoading } = useTest(id);
   const { data: poolChars = [] } = useCharactersByIds(test?.characterIds ?? []);
 
+  const canModerate = roleInfo?.canModerate ?? false;
+
   useEffect(() => {
     if (id) recentlyPlayedDb.add(id);
   }, [id]);
+
+  const handleCoverSaved = () => {
+    qc.invalidateQueries({ queryKey: ["test", id] });
+    qc.invalidateQueries({ queryKey: ["tests"] });
+  };
 
   if (isLoading) {
     return (
@@ -53,6 +65,14 @@ export default function TestDetailPage() {
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
       <Header />
 
+      {showCoverEdit && canModerate && (
+        <CoverEditModal
+          test={test}
+          onClose={() => setShowCoverEdit(false)}
+          onSaved={handleCoverSaved}
+        />
+      )}
+
       <div className="relative h-64 md:h-96 w-full">
         <div className="absolute inset-0 bg-background" />
         <img src={test.coverImage} alt={test.title} className="absolute inset-0 w-full h-full object-cover opacity-50 blur-sm" />
@@ -61,7 +81,23 @@ export default function TestDetailPage() {
 
         <div className="absolute inset-0 container mx-auto px-4 flex flex-col justify-end pb-8 z-10">
           <div className="flex flex-col md:flex-row gap-6 md:items-end">
-            <img src={test.coverImage} alt={test.title} className="w-32 h-32 md:w-48 md:h-48 rounded-2xl object-cover shadow-2xl border-4 border-background" />
+            <div className="relative group/cover">
+              <img
+                src={test.coverImage}
+                alt={test.title}
+                className="w-32 h-32 md:w-48 md:h-48 rounded-2xl object-cover shadow-2xl border-4 border-background"
+              />
+              {canModerate && (
+                <button
+                  onClick={() => setShowCoverEdit(true)}
+                  className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover/cover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white"
+                  title="Kapak Düzenle"
+                >
+                  <Image size={20} />
+                  <span className="text-xs font-bold">Kapak Düzenle</span>
+                </button>
+              )}
+            </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm">
@@ -70,6 +106,14 @@ export default function TestDetailPage() {
                 <span className="flex items-center gap-1 text-sm text-muted-foreground bg-muted/80 px-2 py-1 rounded-full backdrop-blur-md">
                   <Play size={14} /> {test.playCount.toLocaleString()} plays
                 </span>
+                {canModerate && (
+                  <button
+                    onClick={() => setShowCoverEdit(true)}
+                    className="flex items-center gap-1 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1 rounded-full transition-colors"
+                  >
+                    <Image size={12} /> Kapak Düzenle
+                  </button>
+                )}
               </div>
               <h1 className="text-3xl md:text-5xl font-black mb-2 leading-tight drop-shadow-md">{test.title}</h1>
             </div>

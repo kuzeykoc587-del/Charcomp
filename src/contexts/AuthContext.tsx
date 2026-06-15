@@ -14,6 +14,52 @@ import { auth } from "../lib/firebase";
 import { usersDb, AppUser } from "../lib/db";
 import { resolveRole, getRoleInfo, type UserRole, type RoleInfo } from "../lib/roles";
 
+// ── Auth Diagnostics ──────────────────────────────────────────────────────────
+// Stored at module level so they survive across re-renders and can be read
+// by the admin diagnostic panel without adding them to React state.
+export interface AuthDiagnostics {
+  projectId: string;
+  authDomain: string;
+  currentUrl: string;
+  firebaseUserUid: string | null;
+  firebaseUserEmail: string | null;
+  onAuthStateChangedFired: boolean;
+  lastGoogleLoginMethod: "popup" | "redirect" | null;
+  redirectResultCalled: boolean;
+  redirectResultStatus: "not_called" | "null" | "success" | "error";
+  lastAuthErrorCode: string | null;
+  lastAuthErrorMessage: string | null;
+  firestoreUpsertStatus: "not_called" | "success" | "failed";
+  firestoreReadStatus: "not_called" | "success" | "failed";
+  finalAppUserState: "logged_out" | "firebase_user_only" | "app_user_loaded" | "profile_error";
+}
+
+const _diag: AuthDiagnostics = {
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "(not set)",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "(not set)",
+  currentUrl: typeof window !== "undefined" ? window.location.href : "",
+  firebaseUserUid: null,
+  firebaseUserEmail: null,
+  onAuthStateChangedFired: false,
+  lastGoogleLoginMethod: null,
+  redirectResultCalled: false,
+  redirectResultStatus: "not_called",
+  lastAuthErrorCode: null,
+  lastAuthErrorMessage: null,
+  firestoreUpsertStatus: "not_called",
+  firestoreReadStatus: "not_called",
+  finalAppUserState: "logged_out",
+};
+
+export function getAuthDiagnostics(): AuthDiagnostics {
+  return { ..._diag, currentUrl: typeof window !== "undefined" ? window.location.href : "" };
+}
+
+function diagLog(msg: string) {
+  console.log(`[AUTH] ${msg}`);
+}
+
+// ── Context types ─────────────────────────────────────────────────────────────
 interface AuthContextType {
   user: AppUser | null;
   authLoading: boolean;
@@ -63,23 +109,37 @@ function minimalProfile(firebaseUser: import("firebase/auth").User): AppUser {
 async function buildProfile(
   firebaseUser: import("firebase/auth").User
 ): Promise<AppUser> {
+  _diag.firestoreReadStatus = "not_called";
+  _diag.firestoreUpsertStatus = "not_called";
+
   try {
+    _diag.firestoreReadStatus = "not_called";
     const fromDb = await withTimeout(
       usersDb.getById(firebaseUser.uid),
       FIRESTORE_TIMEOUT_MS,
       "Firestore getById"
     );
+    _diag.firestoreReadStatus = "success";
+    diagLog(`Firestore profile read success (exists=${!!fromDb})`);
+
     if (fromDb) {
-      // Always ensure email from Firebase Auth is present.
-      // Firestore docs created before email was a required field may lack it,
-      // which silently breaks VITE_ADMIN_EMAILS matching in checkIsAdmin().
       const merged: AppUser = {
         ...fromDb,
         email: fromDb.email || firebaseUser.email || "",
       };
       if (!merged.createdAt) {
         const withCreatedAt = { ...merged, createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString() };
-        withTimeout(usersDb.upsert(withCreatedAt), FIRESTORE_TIMEOUT_MS, "Firestore upsert createdAt").catch(() => {});
+        withTimeout(
+          usersDb.upsert(withCreatedAt),
+          FIRESTORE_TIMEOUT_MS,
+          "Firestore upsert createdAt"
+        ).then(() => {
+          _diag.firestoreUpsertStatus = "success";
+          diagLog("Firestore upsert (createdAt patch) success");
+        }).catch((e) => {
+          _diag.firestoreUpsertStatus = "failed";
+          diagLog(`Firestore upsert (createdAt patch) failed: ${e}`);
+        });
         return withCreatedAt;
       }
       return merged;
@@ -89,11 +149,21 @@ async function buildProfile(
       ...minimalProfile(firebaseUser),
       createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
     };
-    withTimeout(usersDb.upsert(profile), FIRESTORE_TIMEOUT_MS, "Firestore upsert").catch(
-      (e) => console.error("[CharComp] Could not persist profile (non-fatal):", e)
-    );
+
+    diagLog("profile upsert started (new user)");
+    withTimeout(usersDb.upsert(profile), FIRESTORE_TIMEOUT_MS, "Firestore upsert").then(() => {
+      _diag.firestoreUpsertStatus = "success";
+      diagLog("profile upsert success");
+    }).catch((e) => {
+      _diag.firestoreUpsertStatus = "failed";
+      diagLog(`profile upsert failed: ${e}`);
+      console.error("[CharComp] Could not persist profile (non-fatal):", e);
+    });
+
     return profile;
   } catch (err) {
+    _diag.firestoreReadStatus = "failed";
+    diagLog(`Firestore unreachable — using minimal profile. Error: ${err}`);
     console.error(
       "[CharComp] Firestore unreachable — using minimal profile. " +
       "Check Firestore rules and network.",
@@ -133,37 +203,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           "Verify all VITE_FIREBASE_* env vars are set in Vercel → Settings → Environment Variables " +
           "and your domain is listed in Firebase Console → Authentication → Authorized Domains.";
         console.error("[CharComp]", msg);
+        _diag.lastAuthErrorMessage = msg;
         setAuthError(msg);
         finish();
       }
     }, AUTH_SAFETY_TIMEOUT_MS);
 
-    // Process any pending redirect result from a previous signInWithRedirect call.
-    // Without this, errors are silently dropped and on some browsers the auth
-    // state is never updated after the Google redirect returns.
-    getRedirectResult(auth).catch((err: unknown) => {
-      const code = (err as { code?: string }).code;
-      // auth/no-auth-event is expected when there is no pending redirect.
-      if (code && code !== "auth/no-auth-event") {
-        console.error("[CharComp] Google redirect error:", err);
-        setAuthError((err as Error).message ?? "Google ile giriş başarısız.");
-      }
-    });
+    // ── Handle pending redirect result ────────────────────────────────────────
+    // This MUST be called on every page load when using signInWithRedirect.
+    // On redirect-back, calling getRedirectResult() completes the sign-in and
+    // triggers onAuthStateChanged. Without this, the auth state is never updated.
+    diagLog("checking getRedirectResult");
+    _diag.redirectResultCalled = true;
+    _diag.redirectResultStatus = "not_called";
 
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          _diag.redirectResultStatus = "success";
+          _diag.firebaseUserUid = result.user.uid;
+          _diag.firebaseUserEmail = result.user.email;
+          diagLog(`redirect result received — uid=${result.user.uid}`);
+          // onAuthStateChanged will also fire, but explicitly set user here
+          // to avoid race conditions where onAuthStateChanged fires first with null.
+          buildProfile(result.user).then((profile) => {
+            _diag.finalAppUserState = "app_user_loaded";
+            diagLog(`app user loaded from redirect result — email=${profile.email}`);
+            setUser(profile);
+          }).catch((err) => {
+            _diag.finalAppUserState = "profile_error";
+            diagLog(`profile build failed after redirect: ${err}`);
+            setUser(minimalProfile(result.user));
+          });
+        } else {
+          _diag.redirectResultStatus = "null";
+          diagLog("redirect result null (no pending redirect)");
+        }
+      })
+      .catch((err: unknown) => {
+        const code = (err as { code?: string }).code ?? "";
+        _diag.lastAuthErrorCode = code;
+        _diag.lastAuthErrorMessage = (err as Error).message ?? "";
+        // auth/no-auth-event is expected when there is no pending redirect.
+        if (code && code !== "auth/no-auth-event") {
+          _diag.redirectResultStatus = "error";
+          diagLog(`redirect result error: code=${code} msg=${(err as Error).message}`);
+          console.error("[CharComp] Google redirect error:", err);
+          setAuthError((err as Error).message ?? "Google ile giriş başarısız.");
+        } else {
+          _diag.redirectResultStatus = "null";
+          diagLog(`redirect result — no pending redirect (code=${code})`);
+        }
+      });
+
+    // ── Auth state listener ───────────────────────────────────────────────────
     const unsub = onAuthStateChanged(
       auth,
       async (firebaseUser) => {
         clearTimeout(safetyTimer);
+        _diag.onAuthStateChangedFired = true;
+        diagLog(`onAuthStateChanged fired — user=${firebaseUser?.uid ?? "null"}`);
+
         if (firebaseUser) {
-          const profile = await buildProfile(firebaseUser);
-          setUser(profile);
+          _diag.firebaseUserUid = firebaseUser.uid;
+          _diag.firebaseUserEmail = firebaseUser.email;
+          diagLog(`firebase user detected — uid=${firebaseUser.uid} email=${firebaseUser.email}`);
+          _diag.finalAppUserState = "firebase_user_only";
+
+          try {
+            const profile = await buildProfile(firebaseUser);
+            _diag.finalAppUserState = "app_user_loaded";
+            diagLog(`app user loaded — email=${profile.email} role=${profile.role ?? "none"}`);
+            setUser(profile);
+          } catch (profileErr) {
+            _diag.finalAppUserState = "profile_error";
+            diagLog(`profile build failed, using minimal: ${profileErr}`);
+            // Keep Firebase user even if Firestore profile fails
+            setUser(minimalProfile(firebaseUser));
+          }
         } else {
+          _diag.firebaseUserUid = null;
+          _diag.firebaseUserEmail = null;
+          _diag.finalAppUserState = "logged_out";
+          diagLog("final state: logged_out");
           setUser(null);
         }
         finish();
       },
       (err) => {
         console.error("[CharComp] onAuthStateChanged error:", err);
+        _diag.lastAuthErrorCode = err.code ?? null;
+        _diag.lastAuthErrorMessage = err.message;
         clearTimeout(safetyTimer);
         setAuthError(err.message);
         finish();
@@ -178,6 +308,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
+    diagLog(`email/password sign-in success — uid=${cred.user.uid}`);
     setUser(minimalProfile(cred.user));
     buildProfile(cred.user).then(setUser).catch(() => {});
   };
@@ -207,25 +338,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     provider.setCustomParameters({ prompt: "select_account" });
 
     if (isMobileBrowser()) {
+      diagLog("using redirect (mobile browser detected)");
+      _diag.lastGoogleLoginMethod = "redirect";
       // On mobile, popups are unreliable — use redirect.
       // getRedirectResult() on the next page load will complete the sign-in.
       await signInWithRedirect(auth, provider);
       return;
     }
 
-    // On desktop, popup is immediate and doesn't require a full page reload.
+    diagLog("using popup (desktop)");
+    _diag.lastGoogleLoginMethod = "popup";
+
     try {
       const result = await signInWithPopup(auth, provider);
+      diagLog(`popup success — uid=${result.user.uid}`);
       // onAuthStateChanged fires automatically; also set user right away
       // so the UI doesn't wait for the next auth cycle.
       const profile = await buildProfile(result.user);
+      _diag.finalAppUserState = "app_user_loaded";
+      diagLog(`app user loaded after popup — email=${profile.email}`);
       setUser(profile);
     } catch (err: unknown) {
-      const code = (err as { code?: string }).code;
+      const code = (err as { code?: string }).code ?? "";
+      _diag.lastAuthErrorCode = code;
+      _diag.lastAuthErrorMessage = (err as Error).message ?? "";
       if (code === "auth/popup-blocked" || code === "auth/popup-closed-by-user") {
-        // Popup was blocked by the browser — fall back to redirect.
+        diagLog(`popup blocked/closed (code=${code}), falling back to redirect`);
+        _diag.lastGoogleLoginMethod = "redirect";
         await signInWithRedirect(auth, provider);
       } else {
+        diagLog(`popup error: code=${code}`);
         throw err;
       }
     }
@@ -233,6 +375,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     await signOut(auth);
+    _diag.finalAppUserState = "logged_out";
+    _diag.firebaseUserUid = null;
+    _diag.firebaseUserEmail = null;
+    diagLog("user signed out");
     setUser(null);
   };
 
