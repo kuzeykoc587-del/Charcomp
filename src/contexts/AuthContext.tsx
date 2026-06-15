@@ -64,12 +64,19 @@ async function buildProfile(
       "Firestore getById"
     );
     if (fromDb) {
-      if (!fromDb.createdAt) {
-        const withCreatedAt = { ...fromDb, createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString() };
+      // Always ensure email from Firebase Auth is present.
+      // Firestore docs created before email was a required field may lack it,
+      // which silently breaks VITE_ADMIN_EMAILS matching in checkIsAdmin().
+      const merged: AppUser = {
+        ...fromDb,
+        email: fromDb.email || firebaseUser.email || "",
+      };
+      if (!merged.createdAt) {
+        const withCreatedAt = { ...merged, createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString() };
         withTimeout(usersDb.upsert(withCreatedAt), FIRESTORE_TIMEOUT_MS, "Firestore upsert createdAt").catch(() => {});
         return withCreatedAt;
       }
-      return fromDb;
+      return merged;
     }
 
     const profile: AppUser = {
