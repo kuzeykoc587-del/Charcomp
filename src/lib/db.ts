@@ -18,6 +18,9 @@ export interface Universe {
   characterCount: number;
   creatorId: string;
   createdAt: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  status?: "published" | "pending" | "hidden" | "rejected";
   isSeedContent?: boolean;
   deleted?: boolean;
   deletedAt?: string;
@@ -33,6 +36,9 @@ export interface Character {
   tags: string[];
   creatorId: string;
   createdAt: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  status?: "published" | "pending" | "hidden" | "rejected";
   // Duel stats
   wins?: number;
   losses?: number;
@@ -170,13 +176,35 @@ export const universesDb = {
     const col = collection(firestore, "universes");
     const q = query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted);
+    let results = snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted && (!u.status || u.status === "published"));
     if (filters?.category) results = results.filter(u => u.category === filters.category);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(u => u.name.toLowerCase().includes(s) || u.description.toLowerCase().includes(s));
     }
     return results;
+  },
+
+  getAllForAdmin: async (): Promise<Universe[]> => {
+    const snap = await getDocs(collection(firestore, "universes"));
+    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getByStatus: async (status: NonNullable<Universe["status"]>): Promise<Universe[]> => {
+    const snap = await getDocs(collection(firestore, "universes"));
+    return snap.docs.map(d => fromDoc<Universe>(d))
+      .filter(u => !u.deleted && u.status === status)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 100);
+  },
+
+  moderate: async (id: string, action: "approve" | "reject" | "hide", moderatorId: string): Promise<void> => {
+    const updates: Record<string, unknown> = { updatedAt: ts(), updatedBy: moderatorId };
+    if (action === "approve") updates.status = "published";
+    else if (action === "reject") updates.status = "rejected";
+    else if (action === "hide") updates.status = "hidden";
+    await updateDoc(doc(firestore, "universes", id), updates);
   },
 
   getById: async (id: string): Promise<Universe | null> => {
@@ -227,12 +255,34 @@ export const charactersDb = {
       ? query(col, where("seriesId", "==", filters.seriesId))
       : query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted);
+    let results = snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted && (!c.status || c.status === "published"));
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(c => c.name.toLowerCase().includes(s));
     }
     return results;
+  },
+
+  getAllForAdmin: async (): Promise<Character[]> => {
+    const snap = await getDocs(collection(firestore, "characters"));
+    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getByStatus: async (status: NonNullable<Character["status"]>): Promise<Character[]> => {
+    const snap = await getDocs(collection(firestore, "characters"));
+    return snap.docs.map(d => fromDoc<Character>(d))
+      .filter(c => !c.deleted && c.status === status)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 200);
+  },
+
+  moderate: async (id: string, action: "approve" | "reject" | "hide", moderatorId: string): Promise<void> => {
+    const updates: Record<string, unknown> = { updatedAt: ts(), updatedBy: moderatorId };
+    if (action === "approve") updates.status = "published";
+    else if (action === "reject") updates.status = "rejected";
+    else if (action === "hide") updates.status = "hidden";
+    await updateDoc(doc(firestore, "characters", id), updates);
   },
 
   getById: async (id: string): Promise<Character | null> => {
@@ -871,21 +921,39 @@ export const duplicateCheck = {
 
 // ── This or That ──────────────────────────────────────────────────────────────
 
+export interface TotOption {
+  id: string;
+  text: string;
+  imageUrl?: string;
+  description?: string;
+}
+
 export interface ThisOrThat {
   id: string;
   title: string;
   description?: string;
-  optionA: string;
-  optionB: string;
-  imageA?: string;
-  imageB?: string;
+  coverImage?: string;
   category?: string;
   creatorId: string;
   createdAt: string;
-  votesA: number;
-  votesB: number;
+  updatedAt?: string;
+  updatedBy?: string;
+  status?: "published" | "pending" | "hidden" | "rejected";
+  // New multi-option pool
+  options?: TotOption[];
+  optionCount?: number;
+  playCount?: number;
+  // Legacy 2-option fields (backward compat)
+  optionA?: string;
+  optionB?: string;
+  imageA?: string;
+  imageB?: string;
+  votesA?: number;
+  votesB?: number;
   isSeedContent?: boolean;
   deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 const TOT_VOTED_KEY = "charcomp_tot_voted";
@@ -909,7 +977,22 @@ export const thisOrThatDb = {
   getAll: async (lim = 30): Promise<ThisOrThat[]> => {
     const q = query(collection(firestore, "thisOrThat"), orderBy("createdAt", "desc"), limit(lim));
     const snap = await getDocs(q);
-    return snap.docs.map(d => fromDoc<ThisOrThat>(d)).filter(p => !p.deleted);
+    return snap.docs.map(d => fromDoc<ThisOrThat>(d))
+      .filter(p => !p.deleted && (!p.status || p.status === "published"));
+  },
+
+  getAllForAdmin: async (): Promise<ThisOrThat[]> => {
+    const snap = await getDocs(collection(firestore, "thisOrThat"));
+    return snap.docs.map(d => fromDoc<ThisOrThat>(d)).filter(p => !p.deleted)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getByStatus: async (status: NonNullable<ThisOrThat["status"]>): Promise<ThisOrThat[]> => {
+    const snap = await getDocs(collection(firestore, "thisOrThat"));
+    return snap.docs.map(d => fromDoc<ThisOrThat>(d))
+      .filter(p => !p.deleted && p.status === status)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 100);
   },
 
   getById: async (id: string): Promise<ThisOrThat | null> => {
@@ -925,11 +1008,41 @@ export const thisOrThatDb = {
     return snap.docs.map(d => fromDoc<ThisOrThat>(d)).filter(p => !p.deleted);
   },
 
-  create: async (data: Omit<ThisOrThat, "id" | "createdAt" | "votesA" | "votesB">): Promise<string> => {
+  create: async (data: {
+    title: string;
+    description?: string;
+    coverImage?: string;
+    category?: string;
+    creatorId: string;
+    options: TotOption[];
+    status?: ThisOrThat["status"];
+  }): Promise<string> => {
     const ref = await addDoc(collection(firestore, "thisOrThat"), {
-      ...data, votesA: 0, votesB: 0, createdAt: ts(),
+      ...data,
+      optionCount: data.options.length,
+      playCount: 0,
+      status: data.status ?? "published",
+      createdAt: ts(),
     });
     return ref.id;
+  },
+
+  update: async (id: string, data: Partial<Omit<ThisOrThat, "id">>): Promise<void> => {
+    const updates: Record<string, unknown> = { ...data, updatedAt: ts() };
+    if (data.options !== undefined) updates.optionCount = data.options.length;
+    await updateDoc(doc(firestore, "thisOrThat", id), updates);
+  },
+
+  moderate: async (id: string, action: "approve" | "reject" | "hide", moderatorId: string): Promise<void> => {
+    const updates: Record<string, unknown> = { updatedAt: ts(), updatedBy: moderatorId };
+    if (action === "approve") updates.status = "published";
+    else if (action === "reject") updates.status = "rejected";
+    else if (action === "hide") updates.status = "hidden";
+    await updateDoc(doc(firestore, "thisOrThat", id), updates);
+  },
+
+  incrementPlayCount: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "thisOrThat", id), { playCount: increment(1) });
   },
 
   vote: async (id: string, side: "A" | "B"): Promise<void> => {
@@ -939,6 +1052,10 @@ export const thisOrThatDb = {
 
   softDelete: async (id: string, deletedBy: string): Promise<void> => {
     await updateDoc(doc(firestore, "thisOrThat", id), { deleted: true, deletedAt: ts(), deletedBy });
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await deleteDoc(doc(firestore, "thisOrThat", id));
   },
 };
 

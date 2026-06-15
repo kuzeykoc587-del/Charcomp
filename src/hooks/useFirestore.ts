@@ -8,6 +8,9 @@ import {
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
+// re-export for admin hooks
+export type { Universe, Character, ThisOrThat };
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 export const useTests = (filters?: { sort?: "popular" | "new" | "trending"; search?: string }) =>
@@ -54,6 +57,22 @@ export const useUniversesByCreator = (creatorId: string | undefined) =>
     enabled: Boolean(creatorId),
   });
 
+export const useUniversesAdmin = (enabled = true) =>
+  useQuery<Universe[]>({
+    queryKey: ["admin-universes-all"],
+    queryFn: () => universesDb.getAllForAdmin(),
+    staleTime: 0,
+    enabled,
+  });
+
+export const useUniversesByStatus = (status: NonNullable<Universe["status"]>, enabled = true) =>
+  useQuery<Universe[]>({
+    queryKey: ["admin-universes-status", status],
+    queryFn: () => universesDb.getByStatus(status),
+    staleTime: 0,
+    enabled,
+  });
+
 // ── Characters ────────────────────────────────────────────────────────────────
 
 export const useCharacters = (filters?: { seriesId?: string; search?: string }) =>
@@ -83,6 +102,22 @@ export const useCharactersByCreator = (creatorId: string | undefined) =>
     queryKey: ["characters-by-creator", creatorId],
     queryFn: () => (creatorId ? charactersDb.getByCreator(creatorId) : []),
     enabled: Boolean(creatorId),
+  });
+
+export const useCharactersAdmin = (enabled = true) =>
+  useQuery<Character[]>({
+    queryKey: ["admin-characters-all"],
+    queryFn: () => charactersDb.getAllForAdmin(),
+    staleTime: 0,
+    enabled,
+  });
+
+export const useCharactersByStatus = (status: NonNullable<Character["status"]>, enabled = true) =>
+  useQuery<Character[]>({
+    queryKey: ["admin-characters-status", status],
+    queryFn: () => charactersDb.getByStatus(status),
+    staleTime: 0,
+    enabled,
   });
 
 export const useGlobalRanking = () =>
@@ -239,6 +274,22 @@ export const useThisOrThatsByCreator = (creatorId: string | undefined) =>
     queryKey: ["this-or-that-by-creator", creatorId],
     queryFn: () => (creatorId ? thisOrThatDb.getByCreator(creatorId) : []),
     enabled: Boolean(creatorId),
+  });
+
+export const useThisOrThatsAdmin = (enabled = true) =>
+  useQuery<ThisOrThat[]>({
+    queryKey: ["admin-this-or-that-all"],
+    queryFn: () => thisOrThatDb.getAllForAdmin(),
+    staleTime: 0,
+    enabled,
+  });
+
+export const useThisOrThatsByStatus = (status: NonNullable<ThisOrThat["status"]>, enabled = true) =>
+  useQuery<ThisOrThat[]>({
+    queryKey: ["admin-this-or-that-status", status],
+    queryFn: () => thisOrThatDb.getByStatus(status),
+    staleTime: 0,
+    enabled,
   });
 
 // ── Tier Lists ────────────────────────────────────────────────────────────────
