@@ -15,8 +15,15 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Hardcoded admin email fallback — works even if user doc has no role field
+    function isHardcodedAdmin() {
+      return isSignedIn() && request.auth.token.email != null &&
+        request.auth.token.email.lower() == "kuzeykoc587@gmail.com";
+    }
+
     function isAdminOrMod() {
       return isSignedIn() && (
+        isHardcodedAdmin() ||
         getUserData().role == "ADMIN" ||
         getUserData().role == "MODERATOR"
       );
