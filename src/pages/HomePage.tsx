@@ -1,7 +1,9 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
+import type { translations } from "../i18n/translations";
+type TranslationKey = keyof typeof translations.en;
 import { useTests, useDuels, useUniverses, useThisOrThats, useTierLists } from "../hooks/useFirestore";
 import { TestCard } from "../components/TestCard";
 import { UniverseCard } from "../components/UniverseCard";
@@ -13,14 +15,23 @@ import {
 } from "lucide-react";
 import type { Duel } from "../lib/db";
 
-const CATEGORY_CARDS = [
+type CategoryCard = {
+  key: string;
+  titleKey: TranslationKey;
+  icon: React.ReactElement;
+  gradient: string;
+  href: string;
+  comingSoon?: boolean;
+};
+
+const CATEGORY_CARDS: CategoryCard[] = [
   { key: "tests",      titleKey: "home_category_tests",      icon: <FlaskConical size={22} />, gradient: "from-violet-500/20 to-purple-600/10 border-violet-500/30", href: "/tests" },
   { key: "duels",      titleKey: "home_category_duels",      icon: <Swords size={22} />,      gradient: "from-rose-500/20 to-red-600/10 border-rose-500/30",         href: "/duels" },
   { key: "tierlists",  titleKey: "home_category_tierlists",  icon: <LayoutList size={22} />,  gradient: "from-amber-500/20 to-yellow-600/10 border-amber-500/30",     href: "/tierlists" },
   { key: "thisorthat", titleKey: "home_category_thisorthat", icon: <Shuffle size={22} />,     gradient: "from-sky-500/20 to-blue-600/10 border-sky-500/30",           href: "/this-or-that" },
   { key: "universes",  titleKey: "home_category_universes",  icon: <Globe size={22} />,       gradient: "from-emerald-500/20 to-teal-600/10 border-emerald-500/30",   href: "/universes" },
   { key: "guess",      titleKey: "home_category_guess_the",  icon: <HelpCircle size={22} />,  gradient: "from-green-500/20 to-emerald-600/10 border-green-500/30",    href: "/guess-the", comingSoon: true },
-] as const;
+];
 
 type Tab = "tests" | "duels" | "tierlists" | "thisorthat" | "universes";
 const TABS: { key: Tab; labelKey: string }[] = [

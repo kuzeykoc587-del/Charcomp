@@ -292,7 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       (err) => {
         console.error("[CharComp] onAuthStateChanged error:", err);
-        _diag.lastAuthErrorCode = err.code ?? null;
+        _diag.lastAuthErrorCode = (err as { code?: string }).code ?? null;
         _diag.lastAuthErrorMessage = err.message;
         clearTimeout(safetyTimer);
         setAuthError(err.message);

@@ -1021,19 +1021,21 @@ export default function AdminPage() {
     qc.invalidateQueries({ queryKey: ["tests"] });
   };
 
-  const TABS: { key: Tab; label: string; count?: number; adminOnly?: boolean }[] = [
-    { key: "pending", label: "Bekleyen", count: pendingTests.length },
-    { key: "reports", label: "Raporlar", count: openReports.length },
-    { key: "hidden", label: "Gizli Testler" },
-    { key: "rejected", label: "Reddedilen Testler" },
-    { key: "published", label: "Testler" },
-    { key: "universes", label: "Evrenler" },
-    { key: "characters", label: "Karakterler" },
-    { key: "tot", label: "Bu mu O mu" },
-    { key: "seed", label: "Veritabanı" },
-    { key: "info", label: "Bilgi" },
-    { key: "auth-diag", label: "Auth Tanı", adminOnly: true },
-  ].filter(tab => !tab.adminOnly || isAdmin);
+  const TABS: { key: Tab; label: string; count?: number; adminOnly?: boolean }[] = (
+    [
+      { key: "pending" as Tab, label: "Bekleyen", count: pendingTests.length },
+      { key: "reports" as Tab, label: "Raporlar", count: openReports.length },
+      { key: "hidden" as Tab, label: "Gizli Testler" },
+      { key: "rejected" as Tab, label: "Reddedilen Testler" },
+      { key: "published" as Tab, label: "Testler" },
+      { key: "universes" as Tab, label: "Evrenler" },
+      { key: "characters" as Tab, label: "Karakterler" },
+      { key: "tot" as Tab, label: "Bu mu O mu" },
+      { key: "seed" as Tab, label: "Veritabanı" },
+      { key: "info" as Tab, label: "Bilgi" },
+      { key: "auth-diag" as Tab, label: "Auth Tanı", adminOnly: true },
+    ] as { key: Tab; label: string; count?: number; adminOnly?: boolean }[]
+  ).filter(tab => !tab.adminOnly || isAdmin);
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
@@ -1042,7 +1044,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-3 mb-6">
           <ShieldCheck size={28} className="text-primary" />
           <h1 className="text-2xl font-black">Admin Panel</h1>
-          <span className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">{roleInfo.role}</span>
+          <span className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">{roleInfo?.role ?? "—"}</span>
         </div>
 
         <div className="flex border-b mb-6 gap-0 overflow-x-auto">
@@ -1238,7 +1240,7 @@ export default function AdminPage() {
                 <div><p className="text-xs text-muted-foreground mb-1">Firebase UID</p><UIDDisplay uid={user.id} />
                   <p className="text-xs text-muted-foreground mt-1">Bu UID'yi VITE_ADMIN_UIDS ortam değişkenine ekleyerek admin yetkisi verebilirsin.</p></div>
                 <div><p className="text-xs text-muted-foreground mb-1">Rol</p>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">{roleInfo.role}</span></div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">{roleInfo?.role ?? "—"}</span></div>
                 <div><p className="text-xs text-muted-foreground mb-1">Hesap Oluşturma</p>
                   <p className="text-sm">{user.createdAt ? new Date(user.createdAt).toLocaleDateString("tr-TR") : "—"}</p></div>
               </div>
