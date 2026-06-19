@@ -13,7 +13,7 @@ import {
   FlaskConical, Swords, LayoutList, Shuffle, Globe, HelpCircle,
   ArrowRight, Loader2
 } from "lucide-react";
-import type { Duel } from "../lib/db";
+import type { Duel, Test } from "../lib/db";
 
 type CategoryCard = {
   key: string;
@@ -30,7 +30,7 @@ const CATEGORY_CARDS: CategoryCard[] = [
   { key: "tierlists",  titleKey: "home_category_tierlists",  icon: <LayoutList size={22} />,  gradient: "from-amber-500/20 to-yellow-600/10 border-amber-500/30",     href: "/tierlists" },
   { key: "thisorthat", titleKey: "home_category_thisorthat", icon: <Shuffle size={22} />,     gradient: "from-sky-500/20 to-blue-600/10 border-sky-500/30",           href: "/this-or-that" },
   { key: "universes",  titleKey: "home_category_universes",  icon: <Globe size={22} />,       gradient: "from-emerald-500/20 to-teal-600/10 border-emerald-500/30",   href: "/universes" },
-  { key: "guess",      titleKey: "home_category_guess_the",  icon: <HelpCircle size={22} />,  gradient: "from-green-500/20 to-emerald-600/10 border-green-500/30",    href: "/guess-the", comingSoon: true },
+  { key: "guess",      titleKey: "home_category_guess_the",  icon: <HelpCircle size={22} />,  gradient: "from-green-500/20 to-emerald-600/10 border-green-500/30",    href: "/guess-the" },
 ];
 
 type Tab = "tests" | "duels" | "tierlists" | "thisorthat" | "universes";
@@ -76,15 +76,41 @@ function SeeAllLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function useMixedTests(all: Test[]) {
+  if (!all.length) return [];
+  const sorted = [...all].sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0));
+  const totalWant = Math.min(8, all.length);
+  const nPopular = Math.ceil(totalWant * 0.5);
+  const nNew = Math.ceil(totalWant * 0.3);
+  const nRandom = totalWant - nPopular - nNew;
+
+  const popular = sorted.slice(0, nPopular);
+  const remainingAfterPop = sorted.slice(nPopular);
+
+  const byDate = [...remainingAfterPop].sort((a, b) =>
+    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+  );
+  const newItems = byDate.slice(0, nNew);
+
+  const usedIds = new Set([...popular, ...newItems].map(t => t.id));
+  const remaining = all.filter(t => !usedIds.has(t.id));
+  const shuffled = [...remaining].sort(() => Math.random() - 0.5);
+  const random = shuffled.slice(0, nRandom);
+
+  const combined = [...popular, ...newItems, ...random];
+  return combined.sort(() => Math.random() - 0.4);
+}
+
 export default function HomePage() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>("tests");
 
-  const { data: tests      = [], isLoading: loadingTests      } = useTests({ sort: "popular" });
+  const { data: allTests   = [], isLoading: loadingTests      } = useTests({ sort: "popular" });
   const { data: universes  = [], isLoading: loadingUniverses  } = useUniverses();
   const { data: duels      = [], isLoading: loadingDuels      } = useDuels();
   const { data: polls      = [], isLoading: loadingPolls      } = useThisOrThats(12);
   const { data: tierLists  = [], isLoading: loadingTierLists  } = useTierLists(12);
+  const tests = useMixedTests(allTests);
 
   const loadingMap: Record<Tab, boolean> = {
     tests:      loadingTests,

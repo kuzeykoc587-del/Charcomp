@@ -25,6 +25,9 @@ export interface Universe {
   deleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  archived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
 }
 
 export interface Character {
@@ -39,20 +42,19 @@ export interface Character {
   updatedAt?: string;
   updatedBy?: string;
   status?: "published" | "pending" | "hidden" | "rejected";
-  // Duel stats
   wins?: number;
   losses?: number;
   totalDuels?: number;
-  // Tier voting
   tierSum?: number;
   tierCount?: number;
   tierAverage?: number;
-  // Seed
   isSeedContent?: boolean;
-  // Soft delete
   deleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  archived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
 }
 
 export interface TestStats {
@@ -81,6 +83,9 @@ export interface Test {
   deleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  archived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
   status?: "published" | "pending" | "hidden" | "rejected";
   moderationStatus?: "clean" | "flagged" | "needs_review";
   riskScore?: number;
@@ -119,21 +124,77 @@ export interface AppUser {
   avatar: string;
   bio: string;
   email: string;
-  role?: "ADMIN" | "MODERATOR" | "MEMBER" | "NEW_MEMBER";
+  role?: "ADMIN" | "MODERATOR" | "VERIFIED_USER" | "MEMBER" | "NEW_MEMBER";
   isBanned?: boolean;
   isRestricted?: boolean;
   createdAt?: string;
+  theme?: string;
 }
 
 export interface Report {
   id: string;
-  contentType: "test" | "duel" | "tierlist" | "thisorthat" | "universe";
+  contentType: "test" | "duel" | "tierlist" | "thisorthat" | "universe" | "character";
   contentId: string;
+  contentTitle?: string;
   reportedBy: string;
   reason: string;
   details?: string;
   createdAt: string;
-  status: "open" | "resolved" | "dismissed";
+  status: "open" | "resolved" | "dismissed" | "approved" | "removed" | "archived";
+}
+
+export interface GroupedReport {
+  contentId: string;
+  contentType: Report["contentType"];
+  contentTitle?: string;
+  count: number;
+  reasons: string[];
+  reports: Report[];
+  latestAt: string;
+  // Aliases used by AdminPage
+  itemId?: string;
+  itemTitle?: string;
+  type?: Report["contentType"];
+  reportCount?: number;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message?: string;
+  body?: string;
+  createdBy: string;
+  createdAt: string;
+  type: "info" | "warning" | "success" | "event";
+}
+
+export interface ActionLog {
+  id: string;
+  actorId: string;
+  adminId?: string;
+  actorRole: "ADMIN" | "MODERATOR";
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  details?: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface GuessTask {
+  id: string;
+  imageUrl?: string;
+  images?: string[];
+  title?: string;
+  characterIds?: string[];
+  options?: string[];
+  correctAnswer?: string;
+  answerIndex?: number;
+  createdBy: string;
+  createdAt: string;
+  category?: string;
+  playCount?: number;
+  deleted?: boolean;
 }
 
 export interface FavoriteItem {
@@ -153,7 +214,7 @@ export interface TierVote {
 export interface Notification {
   id: string;
   userId: string;
-  type: "duel_vote" | "universe_favorited" | "top10";
+  type: "duel_vote" | "universe_favorited" | "top10" | "like" | "favorite" | "test_played" | "announcement";
   message: string;
   read: boolean;
   createdAt: string;
@@ -169,6 +230,83 @@ const fromDoc = <T>(snap: QueryDocumentSnapshot<DocumentData>): T =>
 
 const ts = () => new Date().toISOString();
 
+// ── Rate limiting (client-side) ────────────────────────────────────────────────
+
+const _rateLimitMap: Map<string, number[]> = new Map();
+
+export function checkRateLimit(userId: string, action: string, maxPerWindow = 3, windowMs = 3000): boolean {
+  const key = `${userId}:${action}`;
+  const now = Date.now();
+  const times = (_rateLimitMap.get(key) ?? []).filter(t => now - t < windowMs);
+  if (times.length >= maxPerWindow) return false;
+  times.push(now);
+  _rateLimitMap.set(key, times);
+  return true;
+}
+
+// ── Admin/Mod Action Logs ─────────────────────────────────────────────────────
+
+export const actionLogsDb = {
+  log: async (data: Omit<ActionLog, "id" | "createdAt">): Promise<void> => {
+    try {
+      await addDoc(collection(firestore, "adminLogs"), { ...data, createdAt: ts() });
+    } catch { /* non-fatal */ }
+  },
+
+  getAll: async (lim = 100): Promise<ActionLog[]> => {
+    const q = query(collection(firestore, "adminLogs"), orderBy("createdAt", "desc"), limit(lim));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<ActionLog>(d));
+  },
+};
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+
+export const announcementsDb = {
+  getAll: async (): Promise<Announcement[]> => {
+    const q = query(collection(firestore, "announcements"), orderBy("createdAt", "desc"), limit(20));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<Announcement>(d));
+  },
+
+  create: async (data: Omit<Announcement, "id" | "createdAt">): Promise<string> => {
+    const ref = await addDoc(collection(firestore, "announcements"), { ...data, createdAt: ts() });
+    return ref.id;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await deleteDoc(doc(firestore, "announcements", id));
+  },
+};
+
+// ── Guess Tasks ───────────────────────────────────────────────────────────────
+
+export const guessTasksDb = {
+  getAll: async (): Promise<GuessTask[]> => {
+    const q = query(collection(firestore, "guessTasks"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => fromDoc<GuessTask>(d)).filter(g => !g.deleted);
+  },
+
+  getById: async (id: string): Promise<GuessTask | null> => {
+    const snap = await getDoc(doc(firestore, "guessTasks", id));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as GuessTask) : null;
+  },
+
+  create: async (data: Omit<GuessTask, "id" | "createdAt" | "playCount">): Promise<string> => {
+    const ref = await addDoc(collection(firestore, "guessTasks"), { ...data, playCount: 0, createdAt: ts() });
+    return ref.id;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "guessTasks", id), { deleted: true });
+  },
+
+  incrementPlayCount: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "guessTasks", id), { playCount: increment(1) });
+  },
+};
+
 // ── Universes ─────────────────────────────────────────────────────────────────
 
 export const universesDb = {
@@ -176,7 +314,7 @@ export const universesDb = {
     const col = collection(firestore, "universes");
     const q = query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted && (!u.status || u.status === "published"));
+    let results = snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted && !u.archived && (!u.status || u.status === "published"));
     if (filters?.category) results = results.filter(u => u.category === filters.category);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
@@ -187,14 +325,20 @@ export const universesDb = {
 
   getAllForAdmin: async (): Promise<Universe[]> => {
     const snap = await getDocs(collection(firestore, "universes"));
-    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted)
+    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted && !u.archived)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getArchived: async (): Promise<Universe[]> => {
+    const snap = await getDocs(collection(firestore, "universes"));
+    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => u.archived === true)
+      .sort((a, b) => new Date(b.archivedAt ?? b.createdAt).getTime() - new Date(a.archivedAt ?? a.createdAt).getTime());
   },
 
   getByStatus: async (status: NonNullable<Universe["status"]>): Promise<Universe[]> => {
     const snap = await getDocs(collection(firestore, "universes"));
     return snap.docs.map(d => fromDoc<Universe>(d))
-      .filter(u => !u.deleted && u.status === status)
+      .filter(u => !u.deleted && !u.archived && u.status === status)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 100);
   },
@@ -217,7 +361,13 @@ export const universesDb = {
   getByCreator: async (creatorId: string): Promise<Universe[]> => {
     const q = query(collection(firestore, "universes"), where("creatorId", "==", creatorId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted);
+    return snap.docs.map(d => fromDoc<Universe>(d)).filter(u => !u.deleted && !u.archived);
+  },
+
+  countByCreator: async (creatorId: string): Promise<number> => {
+    const q = query(collection(firestore, "universes"), where("creatorId", "==", creatorId));
+    const snap = await getDocs(q);
+    return snap.docs.filter(d => !d.data().deleted && !d.data().archived).length;
   },
 
   create: async (data: Omit<Universe, "id" | "createdAt" | "characterCount">): Promise<string> => {
@@ -241,6 +391,18 @@ export const universesDb = {
     });
   },
 
+  archive: async (id: string, archivedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "universes", id), {
+      archived: true, archivedAt: ts(), archivedBy, deleted: false
+    });
+  },
+
+  restore: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "universes", id), {
+      archived: false, archivedAt: null, archivedBy: null, deleted: false, deletedAt: null, deletedBy: null
+    });
+  },
+
   incrementCharacterCount: async (id: string, delta: number): Promise<void> => {
     await updateDoc(doc(firestore, "universes", id), { characterCount: increment(delta) });
   },
@@ -255,7 +417,7 @@ export const charactersDb = {
       ? query(col, where("seriesId", "==", filters.seriesId))
       : query(col, orderBy("name"));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted && (!c.status || c.status === "published"));
+    let results = snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted && !c.archived && (!c.status || c.status === "published"));
     if (filters?.search) {
       const s = filters.search.toLowerCase();
       results = results.filter(c => c.name.toLowerCase().includes(s));
@@ -265,14 +427,20 @@ export const charactersDb = {
 
   getAllForAdmin: async (): Promise<Character[]> => {
     const snap = await getDocs(collection(firestore, "characters"));
-    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted)
+    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted && !c.archived)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getArchived: async (): Promise<Character[]> => {
+    const snap = await getDocs(collection(firestore, "characters"));
+    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => c.archived === true)
+      .sort((a, b) => new Date(b.archivedAt ?? b.createdAt).getTime() - new Date(a.archivedAt ?? a.createdAt).getTime());
   },
 
   getByStatus: async (status: NonNullable<Character["status"]>): Promise<Character[]> => {
     const snap = await getDocs(collection(firestore, "characters"));
     return snap.docs.map(d => fromDoc<Character>(d))
-      .filter(c => !c.deleted && c.status === status)
+      .filter(c => !c.deleted && !c.archived && c.status === status)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 200);
   },
@@ -295,14 +463,14 @@ export const charactersDb = {
   getByCreator: async (creatorId: string): Promise<Character[]> => {
     const q = query(collection(firestore, "characters"), where("creatorId", "==", creatorId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted);
+    return snap.docs.map(d => fromDoc<Character>(d)).filter(c => !c.deleted && !c.archived);
   },
 
   getAllForRanking: async (): Promise<Character[]> => {
     const snap = await getDocs(collection(firestore, "characters"));
     return snap.docs
       .map(d => fromDoc<Character>(d))
-      .filter(c => !c.deleted && ((c.wins ?? 0) + (c.losses ?? 0)) > 0);
+      .filter(c => !c.deleted && !c.archived && ((c.wins ?? 0) + (c.losses ?? 0)) > 0);
   },
 
   getManyByIds: async (ids: string[]): Promise<Character[]> => {
@@ -346,6 +514,18 @@ export const charactersDb = {
     if (char) await universesDb.incrementCharacterCount(char.seriesId, -1);
   },
 
+  archive: async (id: string, archivedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "characters", id), {
+      archived: true, archivedAt: ts(), archivedBy, deleted: false
+    });
+  },
+
+  restore: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "characters", id), {
+      archived: false, archivedAt: null, archivedBy: null, deleted: false, deletedAt: null, deletedBy: null
+    });
+  },
+
   checkDuplicate: async (name: string, seriesId: string): Promise<boolean> => {
     const q = query(
       collection(firestore, "characters"),
@@ -372,7 +552,7 @@ export const testsDb = {
     if (filters?.sort === "new") q = query(col, orderBy("createdAt", "desc"), limit(lim));
     if (filters?.sort === "trending") q = query(col, orderBy("likeCount", "desc"), limit(lim));
     const snap = await getDocs(q);
-    let results = snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
+    let results = snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted && !t.archived);
     if (!filters?.includeNonPublished) {
       results = results.filter(t => !t.status || t.status === "published");
     }
@@ -388,7 +568,7 @@ export const testsDb = {
     const snap = await getDocs(col);
     return snap.docs
       .map(d => fromDoc<Test>(d))
-      .filter(t => !t.deleted && (t.status === "pending" || t.moderationStatus === "flagged" || t.moderationStatus === "needs_review"))
+      .filter(t => !t.deleted && !t.archived && (t.status === "pending" || t.moderationStatus === "flagged" || t.moderationStatus === "needs_review"))
       .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0));
   },
 
@@ -396,9 +576,15 @@ export const testsDb = {
     const snap = await getDocs(collection(firestore, "tests"));
     return snap.docs
       .map(d => fromDoc<Test>(d))
-      .filter(t => !t.deleted && t.status === status)
+      .filter(t => !t.deleted && !t.archived && t.status === status)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 100);
+  },
+
+  getArchived: async (): Promise<Test[]> => {
+    const snap = await getDocs(collection(firestore, "tests"));
+    return snap.docs.map(d => fromDoc<Test>(d)).filter(t => t.archived === true)
+      .sort((a, b) => new Date(b.archivedAt ?? b.createdAt).getTime() - new Date(a.archivedAt ?? a.createdAt).getTime());
   },
 
   countCreatedToday: async (creatorId: string): Promise<number> => {
@@ -411,7 +597,13 @@ export const testsDb = {
       where("createdAt", ">=", todayIso)
     );
     const snap = await getDocs(q);
-    return snap.docs.filter(d => !d.data().deleted).length;
+    return snap.docs.filter(d => !d.data().deleted && !d.data().archived).length;
+  },
+
+  countByCreator: async (creatorId: string): Promise<number> => {
+    const q = query(collection(firestore, "tests"), where("creatorId", "==", creatorId));
+    const snap = await getDocs(q);
+    return snap.docs.filter(d => !d.data().deleted && !d.data().archived).length;
   },
 
   getAllTitles: async (): Promise<string[]> => {
@@ -459,7 +651,7 @@ export const testsDb = {
   getByCreator: async (creatorId: string): Promise<Test[]> => {
     const q = query(collection(firestore, "tests"), where("creatorId", "==", creatorId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted);
+    return snap.docs.map(d => fromDoc<Test>(d)).filter(t => !t.deleted && !t.archived);
   },
 
   create: async (data: Omit<Test, "id" | "createdAt" | "playCount" | "likeCount" | "favoriteCount" | "stats"> & {
@@ -489,6 +681,18 @@ export const testsDb = {
   softDelete: async (id: string, deletedBy: string): Promise<void> => {
     await updateDoc(doc(firestore, "tests", id), {
       deleted: true, deletedAt: ts(), deletedBy
+    });
+  },
+
+  archive: async (id: string, archivedBy: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tests", id), {
+      archived: true, archivedAt: ts(), archivedBy, deleted: false
+    });
+  },
+
+  restore: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tests", id), {
+      archived: false, archivedAt: null, archivedBy: null, deleted: false, deletedAt: null, deletedBy: null
     });
   },
 
@@ -544,7 +748,6 @@ export const duelsDb = {
       totalDuels: increment(1),
     });
 
-    // Notify duel creator if someone else voted
     if (duel.creatorId && duel.creatorId !== voterId) {
       const notifRef = doc(collection(firestore, "notifications"));
       batch.set(notifRef, {
@@ -620,7 +823,7 @@ export const notificationsDb = {
     const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<Notification>(d))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 20);
+      .slice(0, 30);
   },
 
   markRead: async (id: string): Promise<void> => {
@@ -636,6 +839,24 @@ export const notificationsDb = {
     const snap = await getDocs(q);
     const batch = writeBatch(firestore);
     snap.docs.forEach(d => batch.update(d.ref, { read: true }));
+    await batch.commit();
+  },
+
+  sendAnnouncement: async (announcementId: string, title: string): Promise<void> => {
+    const usersSnap = await getDocs(collection(firestore, "users"));
+    const batch = writeBatch(firestore);
+    const now = ts();
+    usersSnap.docs.forEach(userDoc => {
+      const notifRef = doc(collection(firestore, "notifications"));
+      batch.set(notifRef, {
+        userId: userDoc.id,
+        type: "announcement",
+        message: title,
+        read: false,
+        createdAt: now,
+        data: { announcementId },
+      });
+    });
     await batch.commit();
   },
 };
@@ -656,8 +877,23 @@ export const usersDb = {
     await updateDoc(doc(firestore, "users", id), { role });
   },
 
+  updateTheme: async (id: string, theme: string): Promise<void> => {
+    await updateDoc(doc(firestore, "users", id), { theme });
+  },
+
   setBanned: async (id: string, isBanned: boolean): Promise<void> => {
     await updateDoc(doc(firestore, "users", id), { isBanned });
+  },
+
+  update: async (id: string, data: Partial<AppUser>): Promise<void> => {
+    await updateDoc(doc(firestore, "users", id), data);
+  },
+
+  searchByEmail: async (email: string): Promise<AppUser | null> => {
+    const q = query(collection(firestore, "users"), where("email", "==", email), limit(1));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as AppUser;
   },
 
   getAll: async (): Promise<AppUser[]> => {
@@ -688,15 +924,58 @@ export const reportsDb = {
   },
 
   getAll: async (): Promise<Report[]> => {
-    const q = query(collection(firestore, "reports"), orderBy("createdAt", "desc"), limit(100));
+    const q = query(collection(firestore, "reports"), orderBy("createdAt", "desc"), limit(200));
     const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<Report>(d));
   },
 
   getOpen: async (): Promise<Report[]> => {
-    const q = query(collection(firestore, "reports"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(100));
+    const q = query(collection(firestore, "reports"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(200));
     const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<Report>(d));
+  },
+
+  getGrouped: async (): Promise<GroupedReport[]> => {
+    const all = await reportsDb.getOpen();
+    const grouped: Map<string, GroupedReport> = new Map();
+    for (const r of all) {
+      const key = r.contentId;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          contentId: r.contentId,
+          contentType: r.contentType,
+          contentTitle: r.contentTitle,
+          count: 0,
+          reasons: [],
+          reports: [],
+          latestAt: r.createdAt,
+          // Aliases for AdminPage
+          itemId: r.contentId,
+          itemTitle: r.contentTitle,
+          type: r.contentType,
+          reportCount: 0,
+        });
+      }
+      const g = grouped.get(key)!;
+      g.count++;
+      if (g.reportCount !== undefined) g.reportCount++;
+      if (!g.reasons.includes(r.reason)) g.reasons.push(r.reason);
+      g.reports.push(r);
+      if (r.createdAt > g.latestAt) g.latestAt = r.createdAt;
+    }
+    return Array.from(grouped.values()).sort((a, b) => b.count - a.count);
+  },
+
+  resolveAll: async (contentId: string, action: "approved" | "removed" | "archived"): Promise<void> => {
+    const q = query(collection(firestore, "reports"), where("contentId", "==", contentId));
+    const snap = await getDocs(q);
+    const batch = writeBatch(firestore);
+    snap.docs.forEach(d => batch.update(d.ref, { status: action }));
+    await batch.commit();
+  },
+
+  resolve: async (id: string, action: "resolved" | "dismissed" | "approved" | "removed" | "archived"): Promise<void> => {
+    await updateDoc(doc(firestore, "reports", id), { status: action });
   },
 
   getByUserAndContent: async (userId: string, contentId: string): Promise<Report | null> => {
@@ -707,10 +986,6 @@ export const reportsDb = {
     );
     const snap = await getDocs(q);
     return snap.empty ? null : fromDoc<Report>(snap.docs[0]);
-  },
-
-  resolve: async (id: string, action: "resolved" | "dismissed"): Promise<void> => {
-    await updateDoc(doc(firestore, "reports", id), { status: action });
   },
 };
 
@@ -774,7 +1049,6 @@ export const favoritesDb = {
       });
     }
 
-    // Notify universe creator on favorite
     if (itemType === "universe") {
       const snap = await getDoc(favRef);
       if (!snap.exists()) {
@@ -939,11 +1213,9 @@ export interface ThisOrThat {
   updatedAt?: string;
   updatedBy?: string;
   status?: "published" | "pending" | "hidden" | "rejected";
-  // New multi-option pool
   options?: TotOption[];
   optionCount?: number;
   playCount?: number;
-  // Legacy 2-option fields (backward compat)
   optionA?: string;
   optionB?: string;
   imageA?: string;
@@ -1104,13 +1376,11 @@ export const tierListsDb = {
 
   getById: async (id: string): Promise<TierList | null> => {
     const snap = await getDoc(doc(firestore, "tierlists", id));
-    if (!snap.exists()) return null;
-    const tl = { id: snap.id, ...snap.data() } as TierList;
-    return tl.deleted ? null : tl;
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as TierList) : null;
   },
 
   getByCreator: async (creatorId: string): Promise<TierList[]> => {
-    const q = query(collection(firestore, "tierlists"), where("creatorId", "==", creatorId), orderBy("createdAt", "desc"));
+    const q = query(collection(firestore, "tierlists"), where("creatorId", "==", creatorId));
     const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<TierList>(d)).filter(tl => !tl.deleted);
   },
@@ -1122,35 +1392,40 @@ export const tierListsDb = {
     return ref.id;
   },
 
-  update: async (id: string, data: Partial<Omit<TierList, "id">>): Promise<void> => {
-    await updateDoc(doc(firestore, "tierlists", id), data);
-  },
-
-  softDelete: async (id: string, deletedBy: string): Promise<void> => {
-    await updateDoc(doc(firestore, "tierlists", id), { deleted: true, deletedAt: ts(), deletedBy });
-  },
-
   incrementPlayCount: async (id: string): Promise<void> => {
     await updateDoc(doc(firestore, "tierlists", id), { playCount: increment(1) });
+  },
+
+  softDelete: async (id: string): Promise<void> => {
+    await updateDoc(doc(firestore, "tierlists", id), { deleted: true });
   },
 };
 
 export const tierListResultsDb = {
-  submit: async (data: Omit<TierListResult, "id">): Promise<string> => {
-    const docId = `${data.tierListId}_${data.userId}`;
-    await setDoc(doc(firestore, "tierlistResults", docId), { ...data, submittedAt: ts() }, { merge: false });
-    await tierListsDb.incrementPlayCount(data.tierListId);
-    return docId;
+  save: async (data: Omit<TierListResult, "id">): Promise<string> => {
+    const ref = await addDoc(collection(firestore, "tierlistResults"), data);
+    return ref.id;
   },
 
-  getUserResult: async (tierListId: string, userId: string): Promise<TierListResult | null> => {
-    const snap = await getDoc(doc(firestore, "tierlistResults", `${tierListId}_${userId}`));
-    return snap.exists() ? ({ id: snap.id, ...snap.data() } as TierListResult) : null;
-  },
-
-  getCommunityResults: async (tierListId: string): Promise<TierListResult[]> => {
+  getForList: async (tierListId: string): Promise<TierListResult[]> => {
     const q = query(collection(firestore, "tierlistResults"), where("tierListId", "==", tierListId));
     const snap = await getDocs(q);
     return snap.docs.map(d => fromDoc<TierListResult>(d));
+  },
+
+  getForUser: async (userId: string, tierListId: string): Promise<TierListResult | null> => {
+    const q = query(
+      collection(firestore, "tierlistResults"),
+      where("userId", "==", userId),
+      where("tierListId", "==", tierListId)
+    );
+    const snap = await getDocs(q);
+    return snap.empty ? null : fromDoc<TierListResult>(snap.docs[0]);
+  },
+
+  /** Backward-compatible alias for save() */
+  submit: async (data: Omit<TierListResult, 'id'>): Promise<string> => {
+    const ref = await addDoc(collection(firestore, 'tierlistResults'), data);
+    return ref.id;
   },
 };

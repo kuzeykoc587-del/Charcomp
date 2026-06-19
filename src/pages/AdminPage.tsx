@@ -12,15 +12,20 @@ import { Link } from "wouter";
 import {
   LogIn, Loader2, CheckCircle2, Database, ShieldCheck, ShieldX,
   Eye, EyeOff, Ban, CheckCheck, AlertTriangle, Flag, Users,
-  Copy, Check, Pencil, Trash2, Image, RefreshCw, Activity, Globe, User
+  Copy, Check, Pencil, Trash2, Image, RefreshCw, Activity, Globe, User,
+  Archive, Megaphone, ClipboardList, HelpCircle, RotateCcw, Plus, Send
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, reportsDb, universesDb, charactersDb, thisOrThatDb,
-  type Test, type Report, type Universe, type Character, type ThisOrThat, type TotOption
+  announcementsDb, guessTasksDb, actionLogsDb, usersDb,
+  type Test, type Report, type Universe, type Character, type ThisOrThat, type TotOption,
+  type Announcement, type GuessTask, type ActionLog, type GroupedReport
 } from "../lib/db";
 import {
-  useUniversesByStatus, useCharactersByStatus, useThisOrThatsByStatus
+  useUniversesByStatus, useCharactersByStatus, useThisOrThatsByStatus,
+  useGroupedReports, useArchivedTests, useArchivedUniverses, useArchivedCharacters,
+  useAnnouncements, useGuessTasks
 } from "../hooks/useFirestore";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -923,6 +928,54 @@ function TotAdminPanel() {
   );
 }
 
+// ── Admin Logs Panel ──────────────────────────────────────────────────────────
+function AdminLogsPanel() {
+  const { data: logs = [], isLoading } = useQuery<ActionLog[]>({
+    queryKey: ["admin-logs"],
+    queryFn: () => actionLogsDb.getAll(100),
+    staleTime: 0,
+  });
+
+  const actionColors: Record<string, string> = {
+    approve: "text-green-500",
+    reject: "text-red-500",
+    hide: "text-amber-500",
+    ban: "text-destructive",
+    unban: "text-blue-500",
+    seed: "text-purple-500",
+    restore: "text-teal-500",
+    announce: "text-primary",
+    role_change: "text-violet-500",
+  };
+
+  return (
+    <div className="bg-card border rounded-2xl p-4 space-y-3">
+      {isLoading ? (
+        <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div>
+      ) : logs.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">Kayıt yok.</p>
+      ) : (
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          {logs.map(log => (
+            <div key={log.id} className="flex items-start gap-3 border-b pb-2 last:border-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-mono">
+                  <span className={`font-bold ${actionColors[log.action] ?? "text-foreground"}`}>{log.action}</span>
+                  {log.targetType && <span className="text-muted-foreground"> · {log.targetType}</span>}
+                  {log.targetId && <span className="text-muted-foreground"> #{log.targetId.slice(0, 8)}</span>}
+                </p>
+                {log.note && <p className="text-[10px] text-muted-foreground">{log.note}</p>}
+                {log.createdAt && <p className="text-[10px] text-muted-foreground">{new Date(log.createdAt).toLocaleString("tr-TR")}</p>}
+              </div>
+              <span className="text-[10px] text-muted-foreground shrink-0">{(log.adminId ?? log.actorId).slice(0, 6)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Hooks for test management ─────────────────────────────────────────────────
 function useTestsByStatus(status: NonNullable<Test["status"]>, enabled: boolean) {
   return useQuery<Test[]>({
@@ -947,7 +1000,7 @@ function useOpenReports(enabled: boolean) {
 }
 
 // ── Main AdminPage ────────────────────────────────────────────────────────────
-type Tab = "pending" | "reports" | "hidden" | "rejected" | "published" | "universes" | "characters" | "tot" | "seed" | "info" | "auth-diag";
+type Tab = "pending" | "reports" | "grouped-reports" | "hidden" | "rejected" | "published" | "universes" | "characters" | "tot" | "archive" | "announcements" | "logs" | "guess" | "users" | "seed" | "info" | "auth-diag";
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -974,6 +1027,90 @@ export default function AdminPage() {
   const { data: hiddenTests = [], isLoading: loadingHidden } = useTestsByStatus("hidden", canModerate && activeTab === "hidden");
   const { data: rejectedTests = [], isLoading: loadingRejected } = useTestsByStatus("rejected", canModerate && activeTab === "rejected");
   const { data: publishedTests = [], isLoading: loadingPublished } = useTestsByStatus("published", canModerate && activeTab === "published");
+  const { data: groupedReports = [], isLoading: loadingGrouped } = useGroupedReports(canModerate && activeTab === "grouped-reports");
+  const { data: archivedTests = [], isLoading: loadingArchivedTests } = useArchivedTests(canModerate && activeTab === "archive");
+  const { data: archivedUniverses = [], isLoading: loadingArchivedUniverses } = useArchivedUniverses(canModerate && activeTab === "archive");
+  const { data: archivedCharacters = [], isLoading: loadingArchivedChars } = useArchivedCharacters(canModerate && activeTab === "archive");
+  const { data: announcements = [], isLoading: loadingAnnouncements } = useAnnouncements();
+  const { data: guessTasks = [], isLoading: loadingGuess } = useGuessTasks();
+
+  // Announcement form state
+  const [annTitle, setAnnTitle] = useState("");
+  const [annBody, setAnnBody] = useState("");
+  const [annType, setAnnType] = useState<Announcement["type"]>("info");
+  const [savingAnn, setSavingAnn] = useState(false);
+
+  // Guess task form state
+  const [guessChars, setGuessChars] = useState<string[]>([]);
+  const [guessTitle, setGuessTitle] = useState("");
+  const [guessImages, setGuessImages] = useState<string[]>(["", "", "", ""]);
+  const [guessAnswer, setGuessAnswer] = useState(0);
+  const [savingGuess, setSavingGuess] = useState(false);
+
+  // User management state
+  const [userQuery, setUserQuery] = useState("");
+  const [userResult, setUserResult] = useState<import("../lib/db").AppUser | null>(null);
+  const [searchingUser, setSearchingUser] = useState(false);
+  const [userAction, setUserAction] = useState<string | null>(null);
+
+  const handleSaveAnnouncement = async () => {
+    if (!annTitle.trim() || !annBody.trim() || !user) return;
+    setSavingAnn(true);
+    try {
+      await announcementsDb.create({ title: annTitle.trim(), body: annBody.trim(), type: annType, createdBy: user.id });
+      setAnnTitle(""); setAnnBody(""); setAnnType("info");
+      qc.invalidateQueries({ queryKey: ["announcements"] });
+    } catch { /* non-fatal */ }
+    setSavingAnn(false);
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    await announcementsDb.delete(id);
+    qc.invalidateQueries({ queryKey: ["announcements"] });
+  };
+
+  const handleSaveGuessTask = async () => {
+    if (!guessTitle.trim() || guessImages.filter(Boolean).length < 2 || !user) return;
+    setSavingGuess(true);
+    try {
+      await guessTasksDb.create({
+        title: guessTitle.trim(),
+        images: guessImages.filter(Boolean),
+        answerIndex: guessAnswer,
+        characterIds: guessChars,
+        createdBy: user.id,
+      });
+      setGuessTitle(""); setGuessImages(["", "", "", ""]); setGuessAnswer(0); setGuessChars([]);
+      qc.invalidateQueries({ queryKey: ["guess-tasks"] });
+    } catch { /* non-fatal */ }
+    setSavingGuess(false);
+  };
+
+  const handleSearchUser = async () => {
+    if (!userQuery.trim()) return;
+    setSearchingUser(true);
+    setUserResult(null);
+    try {
+      const result = await usersDb.searchByEmail(userQuery.trim().toLowerCase());
+      setUserResult(result ?? null);
+    } catch { /* non-fatal */ }
+    setSearchingUser(false);
+  };
+
+  const handleRestoreTest = async (id: string) => {
+    await testsDb.restore(id);
+    qc.invalidateQueries({ queryKey: ["archived-tests"] });
+  };
+
+  const handleRestoreUniverse = async (id: string) => {
+    await universesDb.restore(id);
+    qc.invalidateQueries({ queryKey: ["archived-universes"] });
+  };
+
+  const handleRestoreCharacter = async (id: string) => {
+    await charactersDb.restore(id);
+    qc.invalidateQueries({ queryKey: ["archived-characters"] });
+  };
 
   if (!user) {
     return (
@@ -1025,12 +1162,18 @@ export default function AdminPage() {
     [
       { key: "pending" as Tab, label: "Bekleyen", count: pendingTests.length },
       { key: "reports" as Tab, label: "Raporlar", count: openReports.length },
+      { key: "grouped-reports" as Tab, label: "Gruplu Raporlar" },
       { key: "hidden" as Tab, label: "Gizli Testler" },
       { key: "rejected" as Tab, label: "Reddedilen Testler" },
       { key: "published" as Tab, label: "Testler" },
       { key: "universes" as Tab, label: "Evrenler" },
       { key: "characters" as Tab, label: "Karakterler" },
       { key: "tot" as Tab, label: "Bu mu O mu" },
+      { key: "archive" as Tab, label: "Arşiv", adminOnly: true },
+      { key: "announcements" as Tab, label: "Duyurular" },
+      { key: "guess" as Tab, label: "Guess Tasks" },
+      { key: "users" as Tab, label: "Kullanıcılar" },
+      { key: "logs" as Tab, label: "Kayıtlar", adminOnly: true },
       { key: "seed" as Tab, label: "Veritabanı" },
       { key: "info" as Tab, label: "Bilgi" },
       { key: "auth-diag" as Tab, label: "Auth Tanı", adminOnly: true },
@@ -1192,6 +1335,294 @@ export default function AdminPage() {
               <h2 className="font-bold text-base">Bu mu O mu Yönetimi</h2>
             </div>
             <TotAdminPanel />
+          </div>
+        )}
+
+        {/* ── Gruplu Raporlar ── */}
+        {activeTab === "grouped-reports" && (
+          <div className="space-y-4">
+            <h2 className="font-bold text-base flex items-center gap-2"><Flag size={16} className="text-red-500" /> Gruplu Raporlar</h2>
+            {loadingGrouped ? (
+              <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={24} /></div>
+            ) : groupedReports.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">Gruplu rapor yok.</div>
+            ) : (
+              <div className="space-y-3">
+                {groupedReports.map((g) => (
+                  <div key={g.itemId} className="border rounded-2xl bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm truncate">{g.itemTitle || g.itemId}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{g.type} · {g.reportCount} rapor</p>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {g.reasons.map((r, i) => (
+                            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 font-medium">{r}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <span className="text-lg font-black text-red-500 shrink-0">{g.reportCount}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Arşiv ── */}
+        {activeTab === "archive" && (
+          <div className="space-y-6">
+            <h2 className="font-bold text-base flex items-center gap-2"><Archive size={16} className="text-primary" /> Arşivlenmiş İçerikler</h2>
+
+            {/* Arşiv: Testler */}
+            <div>
+              <h3 className="text-sm font-bold mb-3 text-muted-foreground uppercase tracking-wide">Testler ({archivedTests.length})</h3>
+              {loadingArchivedTests ? <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div> :
+                archivedTests.length === 0 ? <p className="text-sm text-muted-foreground">Arşivlenmiş test yok.</p> : (
+                  <div className="space-y-2">
+                    {archivedTests.map(test => (
+                      <div key={test.id} className="border rounded-xl bg-card p-3 flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{test.title}</p>
+                          <p className="text-xs text-muted-foreground">{test.archivedAt ? new Date(test.archivedAt).toLocaleDateString("tr-TR") : "—"} tarihinde arşivlendi</p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => handleRestoreTest(test.id)} className="gap-1 h-7 text-xs shrink-0">
+                          <RotateCcw size={11} /> Geri Al
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            {/* Arşiv: Evrenler */}
+            <div>
+              <h3 className="text-sm font-bold mb-3 text-muted-foreground uppercase tracking-wide">Evrenler ({archivedUniverses.length})</h3>
+              {loadingArchivedUniverses ? <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div> :
+                archivedUniverses.length === 0 ? <p className="text-sm text-muted-foreground">Arşivlenmiş evren yok.</p> : (
+                  <div className="space-y-2">
+                    {archivedUniverses.map(u => (
+                      <div key={u.id} className="border rounded-xl bg-card p-3 flex items-center justify-between gap-3">
+                        <p className="font-medium text-sm truncate flex-1">{u.name}</p>
+                        <Button size="sm" variant="outline" onClick={() => handleRestoreUniverse(u.id)} className="gap-1 h-7 text-xs shrink-0">
+                          <RotateCcw size={11} /> Geri Al
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            {/* Arşiv: Karakterler */}
+            <div>
+              <h3 className="text-sm font-bold mb-3 text-muted-foreground uppercase tracking-wide">Karakterler ({archivedCharacters.length})</h3>
+              {loadingArchivedChars ? <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div> :
+                archivedCharacters.length === 0 ? <p className="text-sm text-muted-foreground">Arşivlenmiş karakter yok.</p> : (
+                  <div className="space-y-2">
+                    {archivedCharacters.map(c => (
+                      <div key={c.id} className="border rounded-xl bg-card p-3 flex items-center justify-between gap-3">
+                        <p className="font-medium text-sm truncate flex-1">{c.name}</p>
+                        <Button size="sm" variant="outline" onClick={() => handleRestoreCharacter(c.id)} className="gap-1 h-7 text-xs shrink-0">
+                          <RotateCcw size={11} /> Geri Al
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Duyurular ── */}
+        {activeTab === "announcements" && (
+          <div className="space-y-6">
+            <h2 className="font-bold text-base flex items-center gap-2"><Megaphone size={16} className="text-primary" /> Duyuru Yönetimi</h2>
+
+            {/* Yeni Duyuru */}
+            <div className="bg-card border rounded-2xl p-5 space-y-4">
+              <h3 className="font-bold text-sm">Yeni Duyuru</h3>
+              <div className="space-y-3">
+                <Input placeholder="Başlık" value={annTitle} onChange={e => setAnnTitle(e.target.value)} />
+                <textarea
+                  placeholder="Duyuru metni..."
+                  value={annBody} onChange={e => setAnnBody(e.target.value)} rows={3}
+                  className="w-full text-sm bg-muted border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <select value={annType} onChange={e => setAnnType(e.target.value as Announcement["type"])}
+                  className="w-full text-sm bg-muted border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                  <option value="info">Bilgi</option>
+                  <option value="warning">Uyarı</option>
+                  <option value="success">Başarı</option>
+                  <option value="event">Etkinlik</option>
+                </select>
+                <Button onClick={handleSaveAnnouncement} disabled={savingAnn || !annTitle.trim() || !annBody.trim()} className="gap-2 w-full">
+                  {savingAnn ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Duyuru Yayınla
+                </Button>
+              </div>
+            </div>
+
+            {/* Mevcut Duyurular */}
+            <div className="space-y-3">
+              {loadingAnnouncements ? <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div> :
+                announcements.length === 0 ? <p className="text-sm text-muted-foreground">Duyuru yok.</p> : (
+                  announcements.map(ann => {
+                    const typeColors: Record<string, string> = { info: "bg-blue-500/10 text-blue-500", warning: "bg-amber-500/10 text-amber-500", success: "bg-green-500/10 text-green-500", event: "bg-purple-500/10 text-purple-500" };
+                    return (
+                      <div key={ann.id} className="border rounded-xl bg-card p-4 flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[ann.type] ?? "bg-muted"}`}>{ann.type}</span>
+                            <p className="font-bold text-sm">{ann.title}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{ann.body}</p>
+                          {ann.createdAt && <p className="text-[10px] text-muted-foreground mt-1">{new Date(ann.createdAt).toLocaleDateString("tr-TR")}</p>}
+                        </div>
+                        <button onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 shrink-0">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Guess Tasks ── */}
+        {activeTab === "guess" && (
+          <div className="space-y-6">
+            <h2 className="font-bold text-base flex items-center gap-2"><HelpCircle size={16} className="text-primary" /> Guess The Beta — Görev Yönetimi</h2>
+
+            {/* Yeni Görev */}
+            <div className="bg-card border rounded-2xl p-5 space-y-4">
+              <h3 className="font-bold text-sm">Yeni Tahmin Görevi</h3>
+              <Input placeholder="Karakter / Soru adı" value={guessTitle} onChange={e => setGuessTitle(e.target.value)} />
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Görseller (en az 2)</p>
+                {guessImages.map((img, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                    <Input
+                      placeholder={`Görsel ${i + 1} URL`}
+                      value={img}
+                      onChange={e => {
+                        const updated = [...guessImages];
+                        updated[i] = e.target.value;
+                        setGuessImages(updated);
+                      }}
+                    />
+                    <input
+                      type="radio"
+                      name="answerIdx"
+                      checked={guessAnswer === i}
+                      onChange={() => setGuessAnswer(i)}
+                      title="Doğru cevap"
+                    />
+                  </div>
+                ))}
+                <p className="text-[10px] text-muted-foreground">Radio buton ile doğru görseli işaretle</p>
+              </div>
+              <Button onClick={handleSaveGuessTask} disabled={savingGuess || !guessTitle.trim() || guessImages.filter(Boolean).length < 2} className="gap-2 w-full">
+                {savingGuess ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Görevi Kaydet
+              </Button>
+            </div>
+
+            {/* Mevcut Görevler */}
+            <div className="space-y-3">
+              {loadingGuess ? <div className="flex justify-center py-6"><Loader2 className="animate-spin" size={20} /></div> :
+                guessTasks.length === 0 ? <p className="text-sm text-muted-foreground">Görev yok. Yukarıdan ekle.</p> : (
+                  guessTasks.map(task => (
+                    <div key={task.id} className="border rounded-xl bg-card p-4 flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm">{task.title}</p>
+                        <p className="text-xs text-muted-foreground">{(task.images?.length ?? 0)} görsel · Doğru: #{(task.answerIndex ?? 0) + 1} · {task.playCount ?? 0} oynama</p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        {(task.images ?? []).slice(0, 2).map((img, i) => (
+                          <img key={i} src={img} alt="" className="w-8 h-8 rounded object-cover border" onError={() => {}} />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Kullanıcılar ── */}
+        {activeTab === "users" && (
+          <div className="space-y-6">
+            <h2 className="font-bold text-base flex items-center gap-2"><Users size={16} className="text-primary" /> Kullanıcı Yönetimi</h2>
+
+            <div className="bg-card border rounded-2xl p-5 space-y-4">
+              <h3 className="font-bold text-sm">E-posta ile Ara</h3>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="kullanici@email.com"
+                  value={userQuery}
+                  onChange={e => setUserQuery(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleSearchUser()}
+                />
+                <Button onClick={handleSearchUser} disabled={searchingUser} className="gap-1 shrink-0">
+                  {searchingUser ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+                  Ara
+                </Button>
+              </div>
+
+              {userResult && (
+                <div className="border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <img src={userResult.avatar} alt={userResult.name} className="w-10 h-10 rounded-full" onError={() => {}} />
+                    <div>
+                      <p className="font-bold text-sm">{userResult.name}</p>
+                      <p className="text-xs text-muted-foreground">{userResult.email}</p>
+                    </div>
+                    <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">{userResult.role ?? "MEMBER"}</span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {isAdmin && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={async () => {
+                        if (!userResult.id) return;
+                        await usersDb.update(userResult.id, { role: "VERIFIED_USER" });
+                        setUserResult({ ...userResult, role: "VERIFIED_USER" } as any);
+                      }}>
+                        <CheckCheck size={11} /> Doğrulanmış Yap
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={async () => {
+                        if (!userResult.id) return;
+                        await usersDb.update(userResult.id, { role: "MODERATOR" });
+                        setUserResult({ ...userResult, role: "MODERATOR" } as any);
+                      }}>
+                        <ShieldCheck size={11} /> Moderatör Yap
+                      </Button>
+                    )}
+                    {canModerate && (
+                      <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={async () => {
+                        if (!userResult.id) return;
+                        const newBanned = !userResult.isBanned;
+                        await usersDb.update(userResult.id, { isBanned: newBanned });
+                        setUserResult({ ...userResult, isBanned: newBanned });
+                      }}>
+                        <Ban size={11} /> {userResult.isBanned ? "Yasağı Kaldır" : "Yasakla"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!userResult && !searchingUser && userQuery && (
+                <p className="text-sm text-muted-foreground">Kullanıcı bulunamadı.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Action Logs ── */}
+        {activeTab === "logs" && (
+          <div className="space-y-4">
+            <h2 className="font-bold text-base flex items-center gap-2"><ClipboardList size={16} className="text-primary" /> İşlem Kayıtları</h2>
+            <AdminLogsPanel />
           </div>
         )}
 

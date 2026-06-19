@@ -1,14 +1,17 @@
-export type UserRole = "ADMIN" | "MODERATOR" | "MEMBER" | "NEW_MEMBER";
+export type UserRole = "ADMIN" | "MODERATOR" | "VERIFIED_USER" | "MEMBER" | "NEW_MEMBER";
 
 export interface RoleInfo {
   role: UserRole;
   isAdmin: boolean;
   isModerator: boolean;
+  isVerifiedUser: boolean;
   isMember: boolean;
   isNewMember: boolean;
   canBypassLimits: boolean;
   canModerate: boolean;
   dailyTestLimit: number;
+  testLimit: number;
+  universeLimit: number;
 }
 
 function getAdminEmails(): string[] {
@@ -54,6 +57,7 @@ export function resolveRole(
 ): UserRole {
   if (checkIsAdmin(uid, email, firestoreRole)) return "ADMIN";
   if (firestoreRole === "MODERATOR") return "MODERATOR";
+  if (firestoreRole === "VERIFIED_USER") return "VERIFIED_USER";
 
   if (createdAt) {
     const created = new Date(createdAt);
@@ -67,21 +71,41 @@ export function resolveRole(
 export function getRoleInfo(role: UserRole): RoleInfo {
   const isAdmin = role === "ADMIN";
   const isModerator = role === "MODERATOR" || isAdmin;
-  const isMember = role === "MEMBER" || isModerator;
+  const isVerifiedUser = role === "VERIFIED_USER";
+  const isMember = role === "MEMBER" || isVerifiedUser || isModerator;
   const isNewMember = role === "NEW_MEMBER";
   const canBypassLimits = isAdmin || isModerator;
   const canModerate = isModerator;
 
   const dailyTestLimit = canBypassLimits ? Infinity : isNewMember ? 2 : 5;
 
+  let testLimit: number;
+  let universeLimit: number;
+  if (canBypassLimits) {
+    testLimit = Infinity;
+    universeLimit = Infinity;
+  } else if (isVerifiedUser) {
+    testLimit = 10;
+    universeLimit = 10;
+  } else if (isMember) {
+    testLimit = 6;
+    universeLimit = 6;
+  } else {
+    testLimit = 4;
+    universeLimit = 4;
+  }
+
   return {
     role,
     isAdmin,
     isModerator,
+    isVerifiedUser,
     isMember,
     isNewMember,
     canBypassLimits,
     canModerate,
     dailyTestLimit,
+    testLimit,
+    universeLimit,
   };
 }

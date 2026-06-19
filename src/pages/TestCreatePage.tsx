@@ -58,10 +58,17 @@ export default function TestCreatePage() {
     try {
       const canBypassLimits = roleInfo?.canBypassLimits ?? false;
       const dailyLimit = roleInfo?.dailyTestLimit ?? 5;
+      const totalLimit = roleInfo?.testLimit ?? 4;
 
       if (!canBypassLimits) {
         const todayCount = await testsDb.countCreatedToday(user.id);
         if (todayCount >= dailyLimit) {
+          setLimitReached(true);
+          setPublishing(false);
+          return;
+        }
+        const totalCount = await testsDb.countByCreator(user.id);
+        if (totalLimit !== Infinity && totalCount >= totalLimit) {
           setLimitReached(true);
           setPublishing(false);
           return;

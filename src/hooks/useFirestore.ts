@@ -2,9 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   testsDb, universesDb, charactersDb, duelsDb,
   likesDb, favoritesDb, recentlyPlayedDb, tierVotesDb, notificationsDb,
-  thisOrThatDb, tierListsDb, tierListResultsDb, reportsDb,
+  thisOrThatDb, tierListsDb, tierListResultsDb, reportsDb, announcementsDb, guessTasksDb,
   type Test, type Universe, type Character, type Duel, type FavoriteItem,
-  type TierVote, type Notification, type ThisOrThat, type TierList, type TierListResult, type Report
+  type TierVote, type Notification, type ThisOrThat, type TierList, type TierListResult, type Report,
+  type Announcement, type GuessTask, type GroupedReport
 } from "../lib/db";
 import type { SeriesCategory } from "../lib/seedData";
 
@@ -73,6 +74,14 @@ export const useUniversesByStatus = (status: NonNullable<Universe["status"]>, en
     enabled,
   });
 
+export const useArchivedUniverses = (enabled = true) =>
+  useQuery<Universe[]>({
+    queryKey: ["archived-universes"],
+    queryFn: () => universesDb.getArchived(),
+    staleTime: 0,
+    enabled,
+  });
+
 // ── Characters ────────────────────────────────────────────────────────────────
 
 export const useCharacters = (filters?: { seriesId?: string; search?: string }) =>
@@ -80,14 +89,6 @@ export const useCharacters = (filters?: { seriesId?: string; search?: string }) 
     queryKey: ["characters", filters],
     queryFn: () => charactersDb.getAll(filters),
     staleTime: 60_000,
-  });
-
-export const useCharactersByIds = (ids: string[]) =>
-  useQuery<Character[]>({
-    queryKey: ["characters-by-ids", ids],
-    queryFn: () => (ids.length ? charactersDb.getManyByIds(ids) : []),
-    enabled: ids.length > 0,
-    staleTime: 120_000,
   });
 
 export const useCharacter = (id: string | undefined) =>
@@ -120,20 +121,35 @@ export const useCharactersByStatus = (status: NonNullable<Character["status"]>, 
     enabled,
   });
 
-export const useGlobalRanking = () =>
+export const useArchivedCharacters = (enabled = true) =>
   useQuery<Character[]>({
-    queryKey: ["global-ranking"],
-    queryFn: () => charactersDb.getAllForRanking(),
-    staleTime: 60_000,
+    queryKey: ["archived-characters"],
+    queryFn: () => charactersDb.getArchived(),
+    staleTime: 0,
+    enabled,
+  });
+
+export const useCharactersByIds = (ids: string[]) =>
+  useQuery<Character[]>({
+    queryKey: ["characters-by-ids", ids],
+    queryFn: () => charactersDb.getManyByIds(ids),
+    enabled: ids.length > 0,
   });
 
 // ── Duels ─────────────────────────────────────────────────────────────────────
 
-export const useDuels = (lim = 100) =>
+export const useDuels = (lim = 30) =>
   useQuery<Duel[]>({
     queryKey: ["duels", lim],
     queryFn: () => duelsDb.getAll(lim),
     staleTime: 30_000,
+  });
+
+export const useDuel = (id: string | undefined) =>
+  useQuery<Duel | null>({
+    queryKey: ["duel", id],
+    queryFn: () => (id ? duelsDb.getById(id) : null),
+    enabled: Boolean(id),
   });
 
 export const useDuelsByCreator = (creatorId: string | undefined) =>
@@ -143,6 +159,55 @@ export const useDuelsByCreator = (creatorId: string | undefined) =>
     enabled: Boolean(creatorId),
   });
 
+// ── Likes ─────────────────────────────────────────────────────────────────────
+
+export const useIsLiked = (userId: string | undefined, testId: string | undefined) =>
+  useQuery<boolean>({
+    queryKey: ["liked", userId, testId],
+    queryFn: () => (userId && testId ? likesDb.isLiked(userId, testId) : false),
+    enabled: Boolean(userId && testId),
+  });
+
+export const useToggleLike = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, testId }: { userId: string; testId: string }) =>
+      likesDb.toggle(userId, testId),
+    onSuccess: (_, { userId, testId }) => {
+      qc.invalidateQueries({ queryKey: ["liked", userId, testId] });
+      qc.invalidateQueries({ queryKey: ["tests"] });
+    },
+  });
+};
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+
+export const useIsFavorited = (userId: string | undefined, itemId: string | undefined, itemType: FavoriteItem["itemType"]) =>
+  useQuery<boolean>({
+    queryKey: ["favorited", userId, itemId, itemType],
+    queryFn: () => (userId && itemId ? favoritesDb.isFavorited(userId, itemId, itemType) : false),
+    enabled: Boolean(userId && itemId),
+  });
+
+export const useToggleFavorite = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, itemId, itemType }: { userId: string; itemId: string; itemType: FavoriteItem["itemType"] }) =>
+      favoritesDb.toggle(userId, itemId, itemType),
+    onSuccess: (_, { userId, itemId, itemType }) => {
+      qc.invalidateQueries({ queryKey: ["favorited", userId, itemId, itemType] });
+      qc.invalidateQueries({ queryKey: ["user-favorites", userId, itemType] });
+    },
+  });
+};
+
+export const useUserFavorites = (userId: string | undefined, itemType?: FavoriteItem["itemType"]) =>
+  useQuery<FavoriteItem[]>({
+    queryKey: ["user-favorites", userId, itemType],
+    queryFn: () => (userId ? favoritesDb.getUserFavorites(userId, itemType) : []),
+    enabled: Boolean(userId),
+  });
+
 // ── Tier Votes ────────────────────────────────────────────────────────────────
 
 export const useUserTierVote = (userId: string | undefined, characterId: string | undefined) =>
@@ -150,31 +215,14 @@ export const useUserTierVote = (userId: string | undefined, characterId: string 
     queryKey: ["tier-vote", userId, characterId],
     queryFn: () => (userId && characterId ? tierVotesDb.getUserVote(userId, characterId) : null),
     enabled: Boolean(userId && characterId),
-    staleTime: 60_000,
   });
 
 export const useUserTierVotes = (userId: string | undefined) =>
   useQuery<TierVote[]>({
-    queryKey: ["tier-votes", userId],
+    queryKey: ["tier-votes-user", userId],
     queryFn: () => (userId ? tierVotesDb.getUserVotes(userId) : []),
     enabled: Boolean(userId),
-    staleTime: 30_000,
   });
-
-export const useVoteTier = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, characterId, tier }: { userId: string; characterId: string; tier: TierVote["tier"] }) =>
-      tierVotesDb.vote(userId, characterId, tier),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["tier-vote", vars.userId, vars.characterId] });
-      qc.invalidateQueries({ queryKey: ["tier-votes", vars.userId] });
-      qc.invalidateQueries({ queryKey: ["characters"] });
-      qc.invalidateQueries({ queryKey: ["global-ranking"] });
-      qc.invalidateQueries({ queryKey: ["character", vars.characterId] });
-    },
-  });
-};
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
@@ -187,106 +235,52 @@ export const useNotifications = (userId: string | undefined) =>
     refetchInterval: 60_000,
   });
 
-// ── Likes ─────────────────────────────────────────────────────────────────────
+// ── Announcements ─────────────────────────────────────────────────────────────
 
-export const useIsLiked = (userId: string | undefined, testId: string) =>
-  useQuery<boolean>({
-    queryKey: ["liked", userId, testId],
-    queryFn: () => (userId ? likesDb.isLiked(userId, testId) : false),
-    enabled: Boolean(userId),
+export const useAnnouncements = () =>
+  useQuery<Announcement[]>({
+    queryKey: ["announcements"],
+    queryFn: () => announcementsDb.getAll(),
     staleTime: 60_000,
   });
 
-export const useToggleLike = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, testId }: { userId: string; testId: string }) =>
-      likesDb.toggle(userId, testId),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["liked", vars.userId, vars.testId] });
-      qc.invalidateQueries({ queryKey: ["test", vars.testId] });
-      qc.invalidateQueries({ queryKey: ["tests"] });
-    },
-  });
-};
+// ── Reports ───────────────────────────────────────────────────────────────────
 
-// ── Favorites ─────────────────────────────────────────────────────────────────
-
-export const useIsFavorited = (userId: string | undefined, itemId: string, itemType: FavoriteItem["itemType"]) =>
-  useQuery<boolean>({
-    queryKey: ["favorited", userId, itemId, itemType],
-    queryFn: () => (userId ? favoritesDb.isFavorited(userId, itemId, itemType) : false),
-    enabled: Boolean(userId),
-    staleTime: 60_000,
+export const useReports = (enabled = true) =>
+  useQuery<Report[]>({
+    queryKey: ["admin-reports"],
+    queryFn: () => reportsDb.getAll(),
+    staleTime: 0,
+    enabled,
   });
 
-export const useUserFavorites = (userId: string | undefined, itemType?: FavoriteItem["itemType"]) =>
-  useQuery<FavoriteItem[]>({
-    queryKey: ["user-favorites", userId, itemType],
-    queryFn: () => (userId ? favoritesDb.getUserFavorites(userId, itemType) : []),
-    enabled: Boolean(userId),
-    staleTime: 30_000,
+export const useGroupedReports = (enabled = true) =>
+  useQuery<GroupedReport[]>({
+    queryKey: ["admin-grouped-reports"],
+    queryFn: () => reportsDb.getGrouped(),
+    staleTime: 0,
+    enabled,
   });
-
-export const useToggleFavorite = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, itemId, itemType }: { userId: string; itemId: string; itemType: FavoriteItem["itemType"] }) =>
-      favoritesDb.toggle(userId, itemId, itemType),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["favorited", vars.userId, vars.itemId, vars.itemType] });
-      qc.invalidateQueries({ queryKey: ["user-favorites", vars.userId] });
-      if (vars.itemType === "test") {
-        qc.invalidateQueries({ queryKey: ["test", vars.itemId] });
-        qc.invalidateQueries({ queryKey: ["tests"] });
-      }
-    },
-  });
-};
-
-// ── Recently Played ───────────────────────────────────────────────────────────
-
-export const useRecentlyPlayedTests = (allTests: Test[]) => {
-  const recentIds = recentlyPlayedDb.get();
-  return recentIds
-    .map((id) => allTests.find((t) => t.id === id))
-    .filter((t): t is Test => Boolean(t));
-};
 
 // ── This or That ──────────────────────────────────────────────────────────────
 
 export const useThisOrThats = (lim = 30) =>
   useQuery<ThisOrThat[]>({
-    queryKey: ["this-or-that", lim],
+    queryKey: ["thisorthats", lim],
     queryFn: () => thisOrThatDb.getAll(lim),
     staleTime: 30_000,
   });
 
 export const useThisOrThat = (id: string | undefined) =>
   useQuery<ThisOrThat | null>({
-    queryKey: ["this-or-that-item", id],
+    queryKey: ["thisorthat", id],
     queryFn: () => (id ? thisOrThatDb.getById(id) : null),
     enabled: Boolean(id),
   });
 
-export const useThisOrThatsByCreator = (creatorId: string | undefined) =>
-  useQuery<ThisOrThat[]>({
-    queryKey: ["this-or-that-by-creator", creatorId],
-    queryFn: () => (creatorId ? thisOrThatDb.getByCreator(creatorId) : []),
-    enabled: Boolean(creatorId),
-  });
-
-export const useThisOrThatsAdmin = (enabled = true) =>
-  useQuery<ThisOrThat[]>({
-    queryKey: ["admin-this-or-that-all"],
-    queryFn: () => thisOrThatDb.getAllForAdmin(),
-    staleTime: 0,
-    enabled,
-  });
-
 export const useThisOrThatsByStatus = (status: NonNullable<ThisOrThat["status"]>, enabled = true) =>
   useQuery<ThisOrThat[]>({
-    queryKey: ["admin-this-or-that-status", status],
+    queryKey: ["admin-thisorthats-status", status],
     queryFn: () => thisOrThatDb.getByStatus(status),
     staleTime: 0,
     enabled,
@@ -315,34 +309,75 @@ export const useTierListsByCreator = (creatorId: string | undefined) =>
     enabled: Boolean(creatorId),
   });
 
-export const useUserTierListResult = (tierListId: string | undefined, userId: string | undefined) =>
+export const useTierListResult = (userId: string | undefined, tierListId: string | undefined) =>
   useQuery<TierListResult | null>({
-    queryKey: ["tierlist-result", tierListId, userId],
-    queryFn: () => (tierListId && userId ? tierListResultsDb.getUserResult(tierListId, userId) : null),
-    enabled: Boolean(tierListId && userId),
+    queryKey: ["tierlist-result", userId, tierListId],
+    queryFn: () => (userId && tierListId ? tierListResultsDb.getForUser(userId, tierListId) : null),
+    enabled: Boolean(userId && tierListId),
+  });
+
+export const useTierListResults = (tierListId: string | undefined) =>
+  useQuery<TierListResult[]>({
+    queryKey: ["tierlist-results", tierListId],
+    queryFn: () => (tierListId ? tierListResultsDb.getForList(tierListId) : []),
+    enabled: Boolean(tierListId),
+  });
+
+// ── Guess Tasks ───────────────────────────────────────────────────────────────
+
+export const useGuessTasks = () =>
+  useQuery<GuessTask[]>({
+    queryKey: ["guess-tasks"],
+    queryFn: () => guessTasksDb.getAll(),
     staleTime: 60_000,
   });
 
-export const useCommunityTierListResults = (tierListId: string | undefined) =>
-  useQuery<TierListResult[]>({
-    queryKey: ["tierlist-community", tierListId],
-    queryFn: () => (tierListId ? tierListResultsDb.getCommunityResults(tierListId) : []),
-    enabled: Boolean(tierListId),
-    staleTime: 30_000,
-  });
+// ── Admin hooks ───────────────────────────────────────────────────────────────
 
-// ── Moderation / Reports ──────────────────────────────────────────────────────
-
-export const usePendingTests = () =>
+export const useArchivedTests = (enabled = true) =>
   useQuery<Test[]>({
-    queryKey: ["admin-pending-tests"],
-    queryFn: () => testsDb.getPending(),
+    queryKey: ["archived-tests"],
+    queryFn: () => testsDb.getArchived(),
     staleTime: 0,
+    enabled,
   });
 
-export const useOpenReports = () =>
-  useQuery<Report[]>({
-    queryKey: ["admin-open-reports"],
-    queryFn: () => reportsDb.getOpen(),
-    staleTime: 0,
+// ── Backward-compatible aliases (do not remove) ───────────────────────────────
+
+/** Alias: useUserTierListResult(tierListId, userId) → useTierListResult(userId, tierListId) */
+export const useUserTierListResult = (tierListId: string | undefined, userId: string | undefined) =>
+  useTierListResult(userId, tierListId);
+
+/** Alias: useCommunityTierListResults → useTierListResults */
+export const useCommunityTierListResults = useTierListResults;
+
+/** Mutation: vote on a character tier */
+export const useVoteTier = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, characterId, tier }: { userId: string; characterId: string; tier: TierVote["tier"] }) =>
+      tierVotesDb.vote(userId, characterId, tier),
+    onSuccess: (_data, { userId, characterId }) => {
+      void qc.invalidateQueries({ queryKey: ["tier-vote", userId, characterId] });
+      void qc.invalidateQueries({ queryKey: ["characters"] });
+    },
   });
+};
+
+/** Query: all characters with tierCount > 0, sorted by tierAverage descending */
+export const useGlobalRanking = () =>
+  useQuery<Character[]>({
+    queryKey: ["global-ranking"],
+    queryFn: () => charactersDb.getAll().then(chars =>
+      chars.filter(c => (c.tierCount ?? 0) > 0).sort((a, b) => (b.tierAverage ?? 0) - (a.tierAverage ?? 0))
+    ),
+    staleTime: 60_000,
+  });
+
+/** Utility: filter test list to recently played IDs (from localStorage) */
+export const useRecentlyPlayedTests = (allTests: Test[]) => {
+  const recentIds = recentlyPlayedDb.get();
+  const idSet = new Set(recentIds);
+  const map = new Map(allTests.map(t => [t.id, t]));
+  return recentIds.map(id => map.get(id)).filter((t): t is Test => t != null && idSet.has(t.id));
+};

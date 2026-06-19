@@ -4,28 +4,42 @@ import { useAuth } from "../contexts/AuthContext";
 import { Header } from "../components/Header";
 import { TestCard } from "../components/TestCard";
 import { Button } from "../components/ui/button";
-import { Loader2, Trash2, ShieldCheck } from "lucide-react";
+import { Loader2, Trash2, ShieldCheck, Eye, EyeOff, Palette } from "lucide-react";
 import {
   useTestsByCreator, useUserFavorites, useTests,
   useUniversesByCreator, useCharactersByCreator, useDuelsByCreator,
   useUserTierVotes, useCharactersByIds,
 } from "../hooks/useFirestore";
 import { useTranslation } from "../contexts/LanguageContext";
-import { universesDb, charactersDb, duelsDb } from "../lib/db";
+import { universesDb, charactersDb, duelsDb, usersDb } from "../lib/db";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../hooks/use-toast";
+import { useTheme, THEME_LABELS, type AppTheme } from "../contexts/ThemeContext";
 
 type Tab = "created" | "universes" | "characters" | "duels" | "favorites" | "tier-votes";
 
+const THEME_OPTIONS: { value: AppTheme; label: string; preview: string }[] = [
+  { value: "default", label: "Default",    preview: "bg-violet-500" },
+  { value: "bw",      label: "B&W",        preview: "bg-white border-2 border-black" },
+  { value: "gold",    label: "Gold",       preview: "bg-yellow-400" },
+  { value: "purple",  label: "Purple",     preview: "bg-purple-500" },
+  { value: "pink",    label: "Pink",       preview: "bg-pink-500" },
+  { value: "blue",    label: "Blue",       preview: "bg-blue-500" },
+];
+
 export default function ProfilePage() {
-  const { user, logout, roleInfo } = useAuth();
+  const { user, roleInfo } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { appTheme, setAppTheme } = useTheme();
   const [tab, setTab] = useState<Tab>("created");
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string } | null>(null);
+  const [emailVisible, setEmailVisible] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
 
   if (!user) {
     setLocation("/login");
@@ -82,6 +96,15 @@ export default function ProfilePage() {
     }
   };
 
+  const handleThemeChange = async (theme: AppTheme) => {
+    setAppTheme(theme);
+    setSavingTheme(true);
+    try {
+      await usersDb.updateTheme(user.id, theme);
+    } catch { /* non-fatal */ }
+    setSavingTheme(false);
+  };
+
   const tierVoteCharMap = Object.fromEntries(tierVoteCharacters.map(c => [c.id, c]));
 
   const TIER_COLORS: Record<string, string> = {
@@ -92,22 +115,37 @@ export default function ProfilePage() {
     D: "bg-muted text-muted-foreground",
   };
 
+  const maskedEmail = user.email
+    ? user.email.replace(/(.{2}).+(@.+)/, (_m, a, b) => `${a}${"*".repeat(4)}${b}`)
+    : "";
+
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
       <Header />
 
       <div className="bg-card border-b">
-        <div className="container mx-auto px-4 py-10 flex flex-col md:flex-row items-center gap-6">
+        <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row items-center gap-6">
           <img
             src={user.avatar}
             alt={user.name}
             onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=7C3AED&color=fff&size=400&bold=true`; }}
-            className="w-28 h-28 rounded-full border-4 border-background shadow-xl object-cover"
+            className="w-24 h-24 rounded-full border-4 border-background shadow-xl object-cover"
           />
           <div className="text-center md:text-left flex-1">
             <h1 className="text-3xl font-black mb-1">{user.name}</h1>
             {user.bio && <p className="text-muted-foreground mb-2">{user.bio}</p>}
-            <p className="text-sm text-muted-foreground mb-3">{user.email}</p>
+            <div className="flex items-center gap-2 justify-center md:justify-start mb-3">
+              <span className="text-sm text-muted-foreground font-mono">
+                {emailVisible ? user.email : maskedEmail}
+              </span>
+              <button
+                onClick={() => setEmailVisible(v => !v)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title={emailVisible ? "E-postayı gizle" : "E-postayı göster"}
+              >
+                {emailVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
             <div className="flex gap-5 justify-center md:justify-start font-mono text-sm flex-wrap">
               <div><strong className="text-primary text-lg">{myTests.length}</strong> Tests</div>
               <div><strong className="text-primary text-lg">{myUniverses.length}</strong> Universes</div>
@@ -115,7 +153,7 @@ export default function ProfilePage() {
               <div><strong className="text-secondary text-lg">{favoriteTests.length}</strong> Favorites</div>
             </div>
           </div>
-          <div className="flex flex-col gap-2 items-end">
+          <div className="flex flex-col gap-2 items-center md:items-end">
             {roleInfo?.canModerate && (
               <Link href="/admin">
                 <Button variant="outline" size="sm" className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10">
@@ -124,13 +162,46 @@ export default function ProfilePage() {
                 </Button>
               </Link>
             )}
-            <Button variant="outline" onClick={() => { logout(); setLocation("/"); }}>Logout</Button>
+
+            {/* Theme selector */}
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setThemeOpen(v => !v)}
+              >
+                <Palette size={14} />
+                Tema {savingTheme && <Loader2 size={12} className="animate-spin" />}
+              </Button>
+              {themeOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setThemeOpen(false)} />
+                  <div className="absolute right-0 top-10 bg-card border rounded-2xl shadow-2xl z-50 p-3 w-48">
+                    <p className="text-xs font-bold text-muted-foreground mb-2 px-1">Tema Seç</p>
+                    {THEME_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { handleThemeChange(opt.value); setThemeOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm hover:bg-muted transition-colors ${appTheme === opt.value ? "bg-primary/10 text-primary font-bold" : ""}`}
+                      >
+                        <span className={`w-4 h-4 rounded-full shrink-0 ${opt.preview}`} />
+                        {opt.label}
+                        {appTheme === opt.value && <span className="ml-auto text-primary text-xs">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <Button variant="outline" onClick={() => { setLocation("/"); }}>Logout →</Button>
           </div>
         </div>
       </div>
 
       <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="flex gap-1 border-b mb-8 pb-px overflow-x-auto">
+        <div className="flex gap-1 border-b mb-8 pb-px overflow-x-auto hide-scrollbar">
           {tabs.map(({ key, label, count }) => (
             <button
               key={key}
@@ -151,7 +222,6 @@ export default function ProfilePage() {
           <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={32} /></div>
         ) : (
           <>
-            {/* Tests */}
             {tab === "created" && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -161,7 +231,6 @@ export default function ProfilePage() {
               </>
             )}
 
-            {/* Universes */}
             {tab === "universes" && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -194,7 +263,6 @@ export default function ProfilePage() {
               </>
             )}
 
-            {/* Characters */}
             {tab === "characters" && (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -225,7 +293,6 @@ export default function ProfilePage() {
               </>
             )}
 
-            {/* Duels */}
             {tab === "duels" && (
               <>
                 <div className="space-y-3">
@@ -251,7 +318,6 @@ export default function ProfilePage() {
               </>
             )}
 
-            {/* Favorites */}
             {tab === "favorites" && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -261,7 +327,6 @@ export default function ProfilePage() {
               </>
             )}
 
-            {/* Tier Votes */}
             {tab === "tier-votes" && (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">

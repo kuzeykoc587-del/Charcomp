@@ -275,6 +275,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             _diag.finalAppUserState = "app_user_loaded";
             diagLog(`app user loaded — email=${profile.email} role=${profile.role ?? "none"}`);
             setUser(profile);
+            if (profile.theme) {
+              try {
+                document.documentElement.setAttribute("data-theme", profile.theme);
+                localStorage.setItem("charcomp_theme", profile.theme);
+              } catch { /* ignore */ }
+            }
           } catch (profileErr) {
             _diag.finalAppUserState = "profile_error";
             diagLog(`profile build failed, using minimal: ${profileErr}`);

@@ -1,7 +1,7 @@
 import { useTranslation } from "../contexts/LanguageContext";
 import { Button } from "./ui/button";
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ mobile }: { mobile?: boolean }) {
   const { language, setLanguage } = useTranslation();
 
   return (

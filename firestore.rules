@@ -15,10 +15,17 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Hardcoded admin email fallback — works even if user doc has no role field
+    // Hardcoded admin email fallback
     function isHardcodedAdmin() {
       return isSignedIn() && request.auth.token.email != null &&
         request.auth.token.email.lower() == "kuzeykoc587@gmail.com";
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isHardcodedAdmin() ||
+        getUserData().role == "ADMIN"
+      );
     }
 
     function isAdminOrMod() {
@@ -68,7 +75,7 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           "status", "moderationStatus", "riskScore", "riskReasons",
           "approvedBy", "approvedAt", "rejectedBy", "rejectedAt",
-          "hiddenBy", "hiddenAt", "creatorId"
+          "hiddenBy", "hiddenAt", "creatorId", "archived", "archivedAt", "archivedBy"
         ])
       ) || isAdminOrMod();
       allow delete: if isOwner(resource.data.creatorId) || isAdminOrMod();
@@ -89,7 +96,7 @@ service cloud.firestore {
       allow update: if (
         isOwner(resource.data.creatorId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          "status", "creatorId", "updatedBy"
+          "status", "creatorId", "updatedBy", "archived", "archivedAt", "archivedBy"
         ])
       ) || isAdminOrMod();
       allow delete: if isAdminOrMod();
@@ -102,7 +109,7 @@ service cloud.firestore {
       allow update: if (
         isOwner(resource.data.creatorId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          "status", "creatorId", "updatedBy"
+          "status", "creatorId", "updatedBy", "archived", "archivedAt", "archivedBy"
         ])
       ) || isAdminOrMod();
       allow delete: if isAdminOrMod();
@@ -175,5 +182,28 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Announcements ─────────────────────────────────────────────
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow create: if isAdminOrMod();
+      allow update: if isAdminOrMod();
+      allow delete: if isAdmin();
+    }
+
+    // ── Admin Action Logs ─────────────────────────────────────────
+    match /adminLogs/{logId} {
+      allow read: if isAdminOrMod();
+      allow create: if isAdminOrMod();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── Guess Tasks ───────────────────────────────────────────────
+    match /guessTasks/{taskId} {
+      allow read: if true;
+      allow create: if isAdminOrMod();
+      allow update: if isAdminOrMod() || (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["playCount"]));
+      allow delete: if isAdmin();
+    }
   }
 }
