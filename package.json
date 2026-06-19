@@ -18,13 +18,6 @@
     "firebase": "^12.14.0",
     "pnpm": "^11.7.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@firebase/util",
-      "esbuild",
-      "protobufjs"
-    ]
-  },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
