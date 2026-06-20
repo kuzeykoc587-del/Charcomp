@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
-import { useTierList, useCharactersByIds, useUserTierListResult } from "../hooks/useFirestore";
+import { useTierList, useCharactersByIds, useTierListResult } from "../hooks/useFirestore";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
@@ -37,7 +37,7 @@ export default function TierListPlayPage() {
   const { data: characters = [], isLoading: loadingChars } = useCharactersByIds(
     tierList?.characterIds ?? []
   );
-  const { data: existingResult } = useUserTierListResult(id, user?.id);
+  const { data: existingResult } = useTierListResult(user?.id, id);
 
   const [placements, setPlacements] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export default function TierListPlayPage() {
     }
     setSubmitting(true);
     try {
-      await tierListResultsDb.submit({ tierListId: id, userId: user.id, placements, submittedAt: new Date().toISOString() });
+      await tierListResultsDb.save({ tierListId: id, userId: user.id, placements, submittedAt: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ["tierlist-result", id, user.id] });
       qc.invalidateQueries({ queryKey: ["tierlist-community", id] });
       toast({ title: t("msg_tierlist_submitted") });
