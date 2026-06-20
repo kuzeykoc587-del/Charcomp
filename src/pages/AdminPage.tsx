@@ -967,7 +967,7 @@ function AdminLogsPanel() {
                 {log.note && <p className="text-[10px] text-muted-foreground">{log.note}</p>}
                 {log.createdAt && <p className="text-[10px] text-muted-foreground">{new Date(log.createdAt).toLocaleString("tr-TR")}</p>}
               </div>
-              <span className="text-[10px] text-muted-foreground shrink-0">{(log.adminId ?? log.actorId).slice(0, 6)}</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">{log.adminId.slice(0, 6)}</span>
             </div>
           ))}
         </div>
@@ -1535,10 +1535,10 @@ export default function AdminPage() {
                     <div key={task.id} className="border rounded-xl bg-card p-4 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm">{task.title}</p>
-                        <p className="text-xs text-muted-foreground">{(task.images?.length ?? 0)} görsel · Doğru: #{(task.answerIndex ?? 0) + 1} · {task.playCount ?? 0} oynama</p>
+                        <p className="text-xs text-muted-foreground">{task.images.length} görsel · Doğru: #{task.answerIndex + 1} · {task.playCount ?? 0} oynama</p>
                       </div>
                       <div className="flex gap-1 shrink-0">
-                        {(task.images ?? []).slice(0, 2).map((img, i) => (
+                        {task.images.slice(0, 2).map((img, i) => (
                           <img key={i} src={img} alt="" className="w-8 h-8 rounded object-cover border" onError={() => {}} />
                         ))}
                       </div>
