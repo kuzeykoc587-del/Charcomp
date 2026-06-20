@@ -1,7 +1,7 @@
 import { useParams, useLocation } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
-import { useTierList, useCharactersByIds, useUserTierListResult, useCommunityTierListResults } from "../hooks/useFirestore";
+import { useTierList, useCharactersByIds, useTierListResult, useTierListResults } from "../hooks/useFirestore";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Loader2, ArrowLeft, Play, LayoutList, Users, User } from "lucide-react";
@@ -61,8 +61,8 @@ export default function TierListDetailPage() {
   const { data: characters = [], isLoading: loadingChars } = useCharactersByIds(
     tierList?.characterIds ?? []
   );
-  const { data: myResult } = useUserTierListResult(id, user?.id);
-  const { data: communityResults = [] } = useCommunityTierListResults(id);
+  const { data: myResult } = useTierListResult(user?.id, id);
+  const { data: communityResults = [] } = useTierListResults(id);
 
   const communityPlacements = useMemo(() => {
     if (!tierList || communityResults.length === 0) return {};
