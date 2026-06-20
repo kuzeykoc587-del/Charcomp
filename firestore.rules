@@ -201,7 +201,7 @@ service cloud.firestore {
     // ── Guess Tasks ───────────────────────────────────────────────
     match /guessTasks/{taskId} {
       allow read: if true;
-      allow create: if isAdminOrMod();
+      allow create: if isSignedIn() && !isBanned();
       allow update: if isAdminOrMod() || (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["playCount"]));
       allow delete: if isAdmin();
     }
