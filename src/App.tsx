@@ -38,6 +38,7 @@ import ThisOrThatPage from "./pages/ThisOrThatPage";
 import ThisOrThatDetailPage from "./pages/ThisOrThatDetailPage";
 import ThisOrThatCreatePage from "./pages/ThisOrThatCreatePage";
 import GuessThePage from "./pages/GuessThePage";
+import GuessTheCreatePage from "./pages/GuessTheCreatePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,7 @@ function Router() {
 
       {/* ── Guess The ──────────────────────────────────────────── */}
       <Route path="/guess-the" component={GuessThePage} />
+      <Route path="/create/guess-the" component={GuessTheCreatePage} />
 
       {/* ── Test play routes ───────────────────────────────────── */}
       <Route path="/test/:id" component={TestDetailPage} />
