@@ -151,18 +151,12 @@ export interface GroupedReport {
   reasons: string[];
   reports: Report[];
   latestAt: string;
-  // Aliases used by AdminPage
-  itemId?: string;
-  itemTitle?: string;
-  type?: Report["contentType"];
-  reportCount?: number;
 }
 
 export interface Announcement {
   id: string;
   title: string;
-  message?: string;
-  body?: string;
+  message: string;
   createdBy: string;
   createdAt: string;
   type: "info" | "warning" | "success" | "event";
@@ -171,25 +165,19 @@ export interface Announcement {
 export interface ActionLog {
   id: string;
   actorId: string;
-  adminId?: string;
   actorRole: "ADMIN" | "MODERATOR";
   action: string;
   targetId?: string;
   targetType?: string;
   details?: string;
-  note?: string;
   createdAt: string;
 }
 
 export interface GuessTask {
   id: string;
-  imageUrl?: string;
-  images?: string[];
-  title?: string;
-  characterIds?: string[];
-  options?: string[];
-  correctAnswer?: string;
-  answerIndex?: number;
+  imageUrl: string;
+  options: string[];
+  correctAnswer: string;
   createdBy: string;
   createdAt: string;
   category?: string;
@@ -949,16 +937,10 @@ export const reportsDb = {
           reasons: [],
           reports: [],
           latestAt: r.createdAt,
-          // Aliases for AdminPage
-          itemId: r.contentId,
-          itemTitle: r.contentTitle,
-          type: r.contentType,
-          reportCount: 0,
         });
       }
       const g = grouped.get(key)!;
       g.count++;
-      if (g.reportCount !== undefined) g.reportCount++;
       if (!g.reasons.includes(r.reason)) g.reasons.push(r.reason);
       g.reports.push(r);
       if (r.createdAt > g.latestAt) g.latestAt = r.createdAt;
@@ -1421,11 +1403,5 @@ export const tierListResultsDb = {
     );
     const snap = await getDocs(q);
     return snap.empty ? null : fromDoc<TierListResult>(snap.docs[0]);
-  },
-
-  /** Backward-compatible alias for save() */
-  submit: async (data: Omit<TierListResult, 'id'>): Promise<string> => {
-    const ref = await addDoc(collection(firestore, 'tierlistResults'), data);
-    return ref.id;
   },
 };
