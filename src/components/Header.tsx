@@ -117,16 +117,18 @@ export function Header() {
       {/* ── Desktop Header ── */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 items-center mx-auto px-4 justify-between">
+          {/* Logo — always visible */}
           <Link href="/" className="flex items-center gap-2 font-bold text-lg text-primary hover:opacity-80 transition-opacity">
             <Swords className="h-5 w-5" />
             <span>CharComp</span>
           </Link>
 
-          <div className="flex items-center gap-2">
+          {/* Desktop-only action buttons */}
+          <div className="hidden md:flex items-center gap-2">
             <LanguageSwitcher />
             <NotificationBell />
 
-            <Link href="/create" className="hidden sm:inline-flex">
+            <Link href="/create">
               <Button variant="default" size="sm" className="gap-2">
                 <Plus size={15} />
                 {t("nav_create")}
@@ -151,21 +153,37 @@ export function Header() {
               </Link>
             )}
           </div>
+
+          {/* Mobile-only: avatar or login shortcut in top bar */}
+          <div className="flex md:hidden items-center gap-2">
+            {user ? (
+              <Link href="/profile">
+                <Avatar className="h-8 w-8 cursor-pointer border hover:border-primary transition-all">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="text-xs font-bold">
+                    {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon size={14} />}
+                  </AvatarFallback>
+                </Avatar>
+              </Link>
+            ) : (
+              <Link href="/login">
+                <Button variant="ghost" size="sm" className="gap-1 px-2">
+                  <LogIn size={16} />
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
       {/* ── Mobile Bottom Nav ── */}
+      {/* Order: Language · Create · Home · Notifications · Profile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 h-16 flex items-center justify-around px-2">
 
-        <Link href="/">
-          <div className={`flex flex-col items-center gap-0.5 ${location === "/" ? "text-primary" : "text-muted-foreground"}`}>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${location === "/" ? "bg-primary/15" : ""}`}>
-              <Home size={20} className={location === "/" ? "text-primary" : ""} />
-            </div>
-            <span className="text-[9px] font-medium">{t("nav_home")}</span>
-          </div>
-        </Link>
+        {/* 1 — Language */}
+        <LanguageSwitcher mobile />
 
+        {/* 2 — Create */}
         <Link href="/create">
           <div className={`flex flex-col items-center gap-0.5 ${isActive("/create") ? "text-primary" : "text-muted-foreground"}`}>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isActive("/create") ? "bg-primary" : "bg-primary/20"}`}>
@@ -175,26 +193,45 @@ export function Header() {
           </div>
         </Link>
 
-        <LanguageSwitcher mobile />
-
-        {user ? (
-          <>
-            <div className="relative">
-              <MobileNotifBell />
+        {/* 3 — Home */}
+        <Link href="/">
+          <div className={`flex flex-col items-center gap-0.5 ${location === "/" ? "text-primary" : "text-muted-foreground"}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${location === "/" ? "bg-primary/15" : ""}`}>
+              <Home size={20} className={location === "/" ? "text-primary" : ""} />
             </div>
+            <span className="text-[9px] font-medium">{t("nav_home")}</span>
+          </div>
+        </Link>
 
-            <Link href="/profile">
-              <div className={`flex flex-col items-center gap-0.5 ${isActive("/profile") ? "text-primary" : "text-muted-foreground"}`}>
-                <Avatar className={`h-10 w-10 border-2 transition-colors ${isActive("/profile") ? "border-primary" : "border-transparent"}`}>
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="text-sm font-black">
-                    {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon size={14} />}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-[9px] font-medium">{t("nav_profile")}</span>
+        {/* 4 — Notifications */}
+        {user ? (
+          <div className="relative">
+            <MobileNotifBell />
+          </div>
+        ) : (
+          <Link href="/login">
+            <div className={`flex flex-col items-center gap-0.5 ${isActive("/login") ? "text-primary" : "text-muted-foreground"}`}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-foreground/10">
+                <Bell size={20} />
               </div>
-            </Link>
-          </>
+              <span className="text-[9px] font-medium">Bildirim</span>
+            </div>
+          </Link>
+        )}
+
+        {/* 5 — Profile */}
+        {user ? (
+          <Link href="/profile">
+            <div className={`flex flex-col items-center gap-0.5 ${isActive("/profile") ? "text-primary" : "text-muted-foreground"}`}>
+              <Avatar className={`h-10 w-10 border-2 transition-colors ${isActive("/profile") ? "border-primary" : "border-transparent"}`}>
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="text-sm font-black">
+                  {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon size={14} />}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-[9px] font-medium">{t("nav_profile")}</span>
+            </div>
+          </Link>
         ) : (
           <Link href="/login">
             <div className={`flex flex-col items-center gap-0.5 ${isActive("/login") ? "text-primary" : "text-muted-foreground"}`}>
