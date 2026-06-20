@@ -175,12 +175,12 @@ export interface ActionLog {
 
 export interface GuessTask {
   id: string;
-  imageUrl: string;
-  options: string[];
-  correctAnswer: string;
+  title: string;
+  images: string[];
+  answerIndex: number;
+  characterIds?: string[];
   createdBy: string;
   createdAt: string;
-  category?: string;
   playCount?: number;
   deleted?: boolean;
 }
