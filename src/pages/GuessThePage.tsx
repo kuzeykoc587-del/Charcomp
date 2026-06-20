@@ -1,16 +1,18 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Header } from "../components/Header";
-import { useTranslation } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
-import { HelpCircle, CheckCircle2, XCircle, Trophy, RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import {
+  HelpCircle, CheckCircle2, XCircle, Trophy, RefreshCw,
+  Loader2, AlertCircle, Plus
+} from "lucide-react";
 import { useGuessTasks } from "../hooks/useFirestore";
 import { guessTasksDb } from "../lib/db";
 
 const POINTS = [100, 75, 50, 25, 25, 25];
 
 export default function GuessThePage() {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const { data: tasks = [], isLoading } = useGuessTasks();
 
@@ -21,15 +23,16 @@ export default function GuessThePage() {
   const [totalScore, setTotalScore] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [taskScores, setTaskScores] = useState<number[]>([]);
-  const [wrongAnswers, setWrongAnswers] = useState<Set<string>>(new Set());
+  const [wrongIndexes, setWrongIndexes] = useState<Set<number>>(new Set());
 
   const currentTask = tasks[taskIndex];
 
-  const handleAnswer = async (option: string) => {
+  const handleAnswer = async (imgUrl: string, imgIndex: number) => {
     if (selected !== null || isCorrect) return;
-    setSelected(option);
+    setSelected(imgUrl);
 
-    const correct = option === currentTask.correctAnswer;
+    const correctUrl = currentTask.images[currentTask.answerIndex];
+    const correct = imgUrl === correctUrl;
     setIsCorrect(correct);
 
     if (correct) {
@@ -40,7 +43,7 @@ export default function GuessThePage() {
         guessTasksDb.incrementPlayCount(currentTask.id).catch(() => {});
       }
     } else {
-      setWrongAnswers(prev => new Set([...prev, option]));
+      setWrongIndexes(prev => new Set([...prev, imgIndex]));
       setTimeout(() => {
         setSelected(null);
         setIsCorrect(null);
@@ -57,7 +60,7 @@ export default function GuessThePage() {
       setAttempt(0);
       setSelected(null);
       setIsCorrect(null);
-      setWrongAnswers(new Set());
+      setWrongIndexes(new Set());
     }
   };
 
@@ -69,7 +72,7 @@ export default function GuessThePage() {
     setTotalScore(0);
     setTaskScores([]);
     setCompleted(false);
-    setWrongAnswers(new Set());
+    setWrongIndexes(new Set());
   };
 
   if (isLoading) {
@@ -95,11 +98,18 @@ export default function GuessThePage() {
           <span className="inline-block mb-6 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30">
             BETA
           </span>
-          <div className="bg-card border rounded-2xl p-8">
-            <AlertCircle size={28} className="mx-auto mb-3 text-muted-foreground" />
+          <div className="bg-card border rounded-2xl p-8 space-y-4">
+            <AlertCircle size={28} className="mx-auto text-muted-foreground" />
             <p className="text-muted-foreground text-sm">
-              Henüz hiç Guess The sorusu eklenmemiş. Admin panelinden soru ekleyebilirsiniz.
+              Henüz hiç Guess The sorusu eklenmemiş.
             </p>
+            {user && (
+              <Link href="/create/guess-the">
+                <Button className="gap-2 w-full">
+                  <Plus size={16} /> Soru Ekle
+                </Button>
+              </Link>
+            )}
           </div>
         </main>
       </div>
@@ -130,7 +140,7 @@ export default function GuessThePage() {
             <div className="space-y-2 mb-6 text-left">
               {tasks.map((task, i) => (
                 <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50">
-                  <span className="text-xs font-medium truncate flex-1">Soru {i + 1}</span>
+                  <span className="text-xs font-medium truncate flex-1">{task.title}</span>
                   <span className="text-sm font-bold text-primary ml-2">{taskScores[i] ?? 0} puan</span>
                 </div>
               ))}
@@ -147,13 +157,14 @@ export default function GuessThePage() {
   }
 
   const currentPoints = POINTS[Math.min(attempt, POINTS.length - 1)];
+  const correctUrl = currentTask.images[currentTask.answerIndex];
 
   return (
     <div className="min-h-[100dvh] flex flex-col pb-20 md:pb-0">
       <Header />
       <main className="flex-1 container mx-auto px-4 py-6 max-w-lg">
 
-        {/* Header */}
+        {/* Header bar */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center">
@@ -178,7 +189,7 @@ export default function GuessThePage() {
 
         {/* Attempt indicator */}
         <div className="flex items-center gap-1 mb-4">
-          {POINTS.map((pts, i) => (
+          {POINTS.map((_, i) => (
             <div
               key={i}
               className={`flex-1 h-1.5 rounded-full transition-colors ${i < attempt ? "bg-destructive/40" : i === attempt ? "bg-primary" : "bg-muted"}`}
@@ -187,60 +198,79 @@ export default function GuessThePage() {
           <span className="ml-2 text-xs font-bold text-primary">{currentPoints}p</span>
         </div>
 
-        {/* Image */}
-        <div className="relative rounded-2xl overflow-hidden mb-6 aspect-square bg-muted border">
-          <img
-            src={currentTask.imageUrl}
-            alt="Guess what?"
-            className={`w-full h-full object-cover transition-all duration-300 ${isCorrect === true ? "" : ""}`}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-          />
-          {isCorrect === true && (
-            <div className="absolute inset-0 flex items-center justify-center bg-green-500/20 backdrop-blur-sm">
-              <CheckCircle2 size={64} className="text-green-400" />
-            </div>
-          )}
-          {isCorrect === false && (
-            <div className="absolute inset-0 flex items-center justify-center bg-red-500/20 backdrop-blur-sm">
-              <XCircle size={64} className="text-red-400" />
-            </div>
-          )}
+        {/* Question */}
+        <div className="bg-card border rounded-2xl p-4 mb-5 text-center">
+          <p className="text-xs text-muted-foreground mb-1">Hangisi bu karakterdir?</p>
+          <p className="text-xl font-black">{currentTask.title}</p>
         </div>
 
-        {/* Options */}
-        {isCorrect !== true ? (
-          <div className="grid grid-cols-1 gap-2">
-            {currentTask.options.map((opt) => {
-              const isWrong = wrongAnswers.has(opt);
-              const isSelected = selected === opt;
-              return (
-                <button
-                  key={opt}
-                  onClick={() => !isWrong && handleAnswer(opt)}
-                  disabled={isWrong}
-                  className={`w-full py-3 px-4 rounded-xl border text-sm font-bold text-left transition-all
-                    ${isWrong
-                      ? "border-destructive/30 bg-destructive/10 text-destructive/50 cursor-not-allowed line-through"
-                      : isSelected && isCorrect === false
-                      ? "border-destructive bg-destructive/10 text-destructive"
-                      : "border hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]"
-                    }`}
-                >
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 mb-4">
-              <CheckCircle2 className="mx-auto mb-1 text-green-400" size={24} />
-              <p className="font-bold text-green-400">Doğru!</p>
-              <p className="text-sm text-muted-foreground">{currentPoints} puan kazandın</p>
+        {/* Image options grid */}
+        <div className={`grid gap-3 mb-4 ${currentTask.images.length <= 2 ? "grid-cols-2" : currentTask.images.length <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
+          {currentTask.images.map((img, idx) => {
+            const isWrong = wrongIndexes.has(idx);
+            const isSelectedThis = selected === img;
+            const isCorrectOne = img === correctUrl;
+
+            return (
+              <button
+                key={idx}
+                onClick={() => !isWrong && !isCorrect && handleAnswer(img, idx)}
+                disabled={isWrong || isCorrect === true}
+                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                  isWrong
+                    ? "border-destructive/40 opacity-40 cursor-not-allowed"
+                    : isCorrect === true && isCorrectOne
+                    ? "border-green-500 ring-2 ring-green-500/40"
+                    : isSelectedThis && isCorrect === false
+                    ? "border-destructive"
+                    : "border-border hover:border-primary/50 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                }`}
+              >
+                <img
+                  src={img}
+                  alt={`Option ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.3"; }}
+                />
+                {isCorrect === true && isCorrectOne && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-green-500/30 backdrop-blur-sm">
+                    <CheckCircle2 size={36} className="text-green-400" />
+                  </div>
+                )}
+                {isWrong && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
+                    <XCircle size={24} className="text-red-400/70" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Correct feedback + Next button */}
+        {isCorrect === true && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 flex items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={20} className="text-green-500" />
+              <div>
+                <p className="text-sm font-bold text-green-500">Doğru!</p>
+                <p className="text-xs text-muted-foreground">+{currentPoints} puan</p>
+              </div>
             </div>
-            <Button onClick={nextTask} className="w-full">
-              {taskIndex + 1 >= tasks.length ? "Sonuçları Gör" : "Sonraki Soru"}
+            <Button size="sm" onClick={nextTask} className="gap-1">
+              {taskIndex + 1 >= tasks.length ? "Bitti →" : "Sonraki →"}
             </Button>
+          </div>
+        )}
+
+        {/* Create link */}
+        {user && isCorrect !== true && (
+          <div className="text-center mt-4">
+            <Link href="/create/guess-the">
+              <span className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                + Yeni tahmin sorusu ekle
+              </span>
+            </Link>
           </div>
         )}
       </main>
