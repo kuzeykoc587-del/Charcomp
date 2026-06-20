@@ -116,7 +116,7 @@ export default function ProfilePage() {
   };
 
   const maskedEmail = user.email
-    ? user.email.replace(/(.{2}).+(@.+)/, (_m, a, b) => `${a}${"*".repeat(4)}${b}`)
+    ? user.email.replace(/(.{1}).+(@.+)/, (_m, a, b) => `${a}${"*".repeat(5)}${b}`)
     : "";
 
   return (
