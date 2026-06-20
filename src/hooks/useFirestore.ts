@@ -210,6 +210,18 @@ export const useUserFavorites = (userId: string | undefined, itemType?: Favorite
 
 // ── Tier Votes ────────────────────────────────────────────────────────────────
 
+export const useVoteTier = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, characterId, tier }: { userId: string; characterId: string; tier: TierVote["tier"] }) =>
+      tierVotesDb.vote(userId, characterId, tier),
+    onSuccess: (_: void, { userId, characterId }: { userId: string; characterId: string; tier: TierVote["tier"] }) => {
+      qc.invalidateQueries({ queryKey: ["tier-vote", userId, characterId] });
+      qc.invalidateQueries({ queryKey: ["characters"] });
+    },
+  });
+};
+
 export const useUserTierVote = (userId: string | undefined, characterId: string | undefined) =>
   useQuery<TierVote | null>({
     queryKey: ["tier-vote", userId, characterId],
@@ -322,6 +334,23 @@ export const useTierListResults = (tierListId: string | undefined) =>
     queryFn: () => (tierListId ? tierListResultsDb.getForList(tierListId) : []),
     enabled: Boolean(tierListId),
   });
+
+// ── Global Ranking ────────────────────────────────────────────────────────────
+
+export const useGlobalRanking = () =>
+  useQuery<Character[]>({
+    queryKey: ["global-ranking"],
+    queryFn: () => charactersDb.getAll(),
+    staleTime: 60_000,
+  });
+
+// ── Recently Played Tests ─────────────────────────────────────────────────────
+
+export const useRecentlyPlayedTests = (allTests: Test[]): Test[] => {
+  const recentIds = recentlyPlayedDb.get();
+  const testMap = Object.fromEntries(allTests.map(t => [t.id, t]));
+  return recentIds.map(id => testMap[id]).filter(Boolean) as Test[];
+};
 
 // ── Guess Tasks ───────────────────────────────────────────────────────────────
 
