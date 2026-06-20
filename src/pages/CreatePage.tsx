@@ -57,9 +57,8 @@ const OPTIONS: CreateOption[] = [
     icon: <HelpCircle size={26} />,
     titleKey: "lbl_guess_the",
     descKey: "home_guess_the_desc",
-    href: "/guess-the",
+    href: "/create/guess-the",
     color: "text-green-400",
-    comingSoon: true,
   },
 ];
 
