@@ -210,7 +210,7 @@ export default function GuessThePage() {
         {/* Options */}
         {isCorrect !== true ? (
           <div className="grid grid-cols-1 gap-2">
-            {(currentTask.options ?? []).map((opt) => {
+            {currentTask.options.map((opt) => {
               const isWrong = wrongAnswers.has(opt);
               const isSelected = selected === opt;
               return (
