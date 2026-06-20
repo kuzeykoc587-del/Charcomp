@@ -1,7 +1,7 @@
 import { useParams, useLocation } from "wouter";
 import { Header } from "../components/Header";
 import { useTranslation } from "../contexts/LanguageContext";
-import { useTierList, useCharactersByIds, useUserTierListResult, useCommunityTierListResults } from "../hooks/useFirestore";
+import { useTierList, useCharactersByIds, useTierListResult, useTierListResults } from "../hooks/useFirestore";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Loader2, ArrowLeft, Users, User } from "lucide-react";
@@ -94,8 +94,8 @@ export default function TierListResultPage() {
   const { data: characters = [], isLoading: loadingChars } = useCharactersByIds(
     tierList?.characterIds ?? []
   );
-  const { data: myResult, isLoading: loadingMine } = useUserTierListResult(id, user?.id);
-  const { data: communityResults = [], isLoading: loadingCommunity } = useCommunityTierListResults(id);
+  const { data: myResult, isLoading: loadingMine } = useTierListResult(user?.id, id);
+  const { data: communityResults = [], isLoading: loadingCommunity } = useTierListResults(id);
 
   const charMap = Object.fromEntries(characters.map((c) => [c.id, c]));
 
