@@ -964,10 +964,10 @@ function AdminLogsPanel() {
                   {log.targetType && <span className="text-muted-foreground"> · {log.targetType}</span>}
                   {log.targetId && <span className="text-muted-foreground"> #{log.targetId.slice(0, 8)}</span>}
                 </p>
-                {log.note && <p className="text-[10px] text-muted-foreground">{log.note}</p>}
+                {log.details && <p className="text-[10px] text-muted-foreground">{log.details}</p>}
                 {log.createdAt && <p className="text-[10px] text-muted-foreground">{new Date(log.createdAt).toLocaleString("tr-TR")}</p>}
               </div>
-              <span className="text-[10px] text-muted-foreground shrink-0">{log.adminId.slice(0, 6)}</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">{log.actorId.slice(0, 6)}</span>
             </div>
           ))}
         </div>
@@ -1057,7 +1057,7 @@ export default function AdminPage() {
     if (!annTitle.trim() || !annBody.trim() || !user) return;
     setSavingAnn(true);
     try {
-      await announcementsDb.create({ title: annTitle.trim(), body: annBody.trim(), type: annType, createdBy: user.id });
+      await announcementsDb.create({ title: annTitle.trim(), message: annBody.trim(), type: annType, createdBy: user.id });
       setAnnTitle(""); setAnnBody(""); setAnnType("info");
       qc.invalidateQueries({ queryKey: ["announcements"] });
     } catch { /* non-fatal */ }
@@ -1084,6 +1084,24 @@ export default function AdminPage() {
       qc.invalidateQueries({ queryKey: ["guess-tasks"] });
     } catch { /* non-fatal */ }
     setSavingGuess(false);
+  };
+
+  const handleResolveGroup = async (contentId: string) => {
+    try {
+      await reportsDb.resolveAll(contentId, "approved");
+      qc.invalidateQueries({ queryKey: ["grouped-reports"] });
+    } catch { /* non-fatal */ }
+  };
+
+  const handleHideGroupedContent = async (contentId: string, contentType: string) => {
+    try {
+      if (contentType === "test" && user) {
+        await testsDb.moderate(contentId, "hide", user.id);
+        qc.invalidateQueries({ queryKey: ["tests"] });
+      }
+      await reportsDb.resolveAll(contentId, "removed");
+      qc.invalidateQueries({ queryKey: ["grouped-reports"] });
+    } catch { /* non-fatal */ }
   };
 
   const handleSearchUser = async () => {
@@ -1349,18 +1367,50 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-3">
                 {groupedReports.map((g) => (
-                  <div key={g.itemId} className="border rounded-2xl bg-card p-4">
+                  <div key={g.contentId} className="border rounded-2xl bg-card p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm truncate">{g.itemTitle || g.itemId}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{g.type} · {g.reportCount} rapor</p>
+                        <p className="font-bold text-sm truncate">{g.contentTitle || g.contentId}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{g.contentType} · {g.count} rapor</p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {g.reasons.map((r, i) => (
                             <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 font-medium">{r}</span>
                           ))}
                         </div>
                       </div>
-                      <span className="text-lg font-black text-red-500 shrink-0">{g.reportCount}</span>
+                      <span className="text-lg font-black text-red-500 shrink-0">{g.count}</span>
+                    </div>
+                    <div className="flex gap-2 flex-wrap pt-1 border-t border-border/50">
+                      {g.contentType === "test" && (
+                        <Link href={`/test/${g.contentId}`}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                            <Eye size={11} /> İncele
+                          </Button>
+                        </Link>
+                      )}
+                      {g.contentType === "universe" && (
+                        <Link href={`/universe/${g.contentId}`}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                            <Eye size={11} /> İncele
+                          </Button>
+                        </Link>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                        onClick={() => handleHideGroupedContent(g.contentId, g.contentType)}
+                      >
+                        <EyeOff size={11} /> Gizle & Çöz
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 text-green-600 border-green-500/30 hover:bg-green-500/10"
+                        onClick={() => handleResolveGroup(g.contentId)}
+                      >
+                        <CheckCheck size={11} /> Reddet (Çöz)
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1474,7 +1524,7 @@ export default function AdminPage() {
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[ann.type] ?? "bg-muted"}`}>{ann.type}</span>
                             <p className="font-bold text-sm">{ann.title}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground">{ann.body}</p>
+                          <p className="text-xs text-muted-foreground">{ann.message}</p>
                           {ann.createdAt && <p className="text-[10px] text-muted-foreground mt-1">{new Date(ann.createdAt).toLocaleDateString("tr-TR")}</p>}
                         </div>
                         <button onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 shrink-0">
